@@ -1,3 +1,3 @@
 # agent-smeth
 
-purpose: An AI agent that works with Ethereum
+purpose: An AI agent that enables humans and other agents to use Ethereum
