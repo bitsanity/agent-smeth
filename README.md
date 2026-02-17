@@ -262,6 +262,7 @@ agent-smeth can function as:
 ## Roadmap
 
 * [ ] Ethereum Name Service (ENS) integration
+* [ ] Stealth-Payment integration (agent can send and retrieve stealth payments)
 * [ ] Multi-chain support
 * [ ] ERC-20 / ERC-721 helpers
 * [ ] Smart contract deployment support
