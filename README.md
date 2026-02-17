@@ -36,6 +36,7 @@ The goal is to simplify blockchain usage through intelligent agent abstraction.
 
 1. Install OpenClaw from https://openclaw.ai
 2. Connect OpenClaw to an AI
+3. Install web3j
 
 ### Clone the repository
 
@@ -48,6 +49,7 @@ cd agent-smeth
 
 ```bash
 curl -fsSL https://openclaw.ai/install.sh | bash
+npm install web3js
 ```
 
 ---
