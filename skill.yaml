@@ -1,0 +1,60 @@
+name: agent-smeth
+version: 0.1.0
+description: "An AI agent that enables humans and other agents to use Ethereum."
+author: bitsanity
+license: Apache-2.0
+repository: "https://github.com/bitsanity/agent-smeth"
+
+tags:
+  - ethereum
+  - web3
+  - smart-contracts
+  - evm
+  - blockchain
+
+entrypoint:
+  type: prompt
+  system: prompts/system.md
+  user: prompts/user.md
+
+inputs:
+  - name: intent
+    type: string
+    required: true
+    description: "What you want to do (e.g., 'explain this transaction', 'decode logs', 'draft a contract call', 'estimate gas')."
+  - name: chain
+    type: string
+    required: false
+    default: "ethereum-mainnet"
+    description: "Target chain/network (e.g., ethereum-mainnet, sepolia, polygon, arbitrum)."
+  - name: rpc_url
+    type: string
+    required: false
+    description: "Optional JSON-RPC endpoint URL to query on-chain data."
+  - name: address
+    type: string
+    required: false
+    description: "Optional wallet or contract address relevant to the request."
+  - name: tx_hash
+    type: string
+    required: false
+    description: "Optional transaction hash to analyze."
+  - name: abi
+    type: string
+    required: false
+    description: "Optional contract ABI JSON (string) for encoding/decoding calls/events."
+  - name: data
+    type: string
+    required: false
+    description: "Optional raw calldata, logs, or other payload to decode."
+
+outputs:
+  - name: response
+    type: string
+    description: "A clear, step-by-step answer and (when relevant) structured JSON snippets for encoding/decoding."
+
+constraints:
+  - "Do not request or store private keys or seed phrases."
+  - "Warn the user before any action that would broadcast a transaction."
+  - "Be explicit about assumptions and network/chain context."
+

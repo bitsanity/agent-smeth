@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "agent-smeth-skill-input",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "intent": {
+      "type": "string",
+      "minLength": 1,
+      "description": "What you want to do (e.g., 'explain this transaction', 'decode logs', 'draft a contract call', 'estimate gas')."
+    },
+    "chain": {
+      "type": "string",
+      "default": "ethereum-mainnet",
+      "description": "Target chain/network (e.g., ethereum-mainnet, sepolia, polygon, arbitrum)."
+    },
+    "rpc_url": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional JSON-RPC endpoint URL to query on-chain data."
+    },
+    "address": {
+      "type": "string",
+      "pattern": "^0x[a-fA-F0-9]{40}$",
+      "description": "Optional wallet or contract address relevant to the request."
+    },
+    "tx_hash": {
+      "type": "string",
+      "pattern": "^0x[a-fA-F0-9]{64}$",
+      "description": "Optional transaction hash to analyze."
+    },
+    "abi": {
+      "type": "string",
+      "description": "Optional contract ABI JSON (string). Provide as a JSON string."
+    },
+    "data": {
+      "type": "string",
+      "pattern": "^0x[a-fA-F0-9]*$",
+      "description": "Optional raw calldata, logs, or other payload to decode."
+    }
+  },
+  "required": ["intent"]
+}
+
