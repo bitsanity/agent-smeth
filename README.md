@@ -1,6 +1,6 @@
 # agent-smeth
 
-An AI agent that enables humans and other agents to use Ethereum programmatically and conversationally.
+An OpenClaw-friendly AI agent that enables humans and other agents to use Ethereum programmatically and conversationally.
 
 ---
 
