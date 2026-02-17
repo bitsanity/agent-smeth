@@ -1,3 +1,4 @@
+![agent-smeth](./agent-smeth.png)
 # agent-smeth
 
 An OpenClaw-friendly AI agent that enables humans and other agents to use Ethereum programmatically and conversationally.
