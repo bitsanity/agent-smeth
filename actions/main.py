@@ -1,34 +1,74 @@
 """
-Agent Smeth - OpenClaw action entrypoint
+agent-smeth OpenClaw action
 
-This file is intentionally safe-by-default:
-- It NEVER requests or processes private keys or seed phrases.
-- It requires a human to sign transactions
-- It may broadcast transactions through an Ethereum full node or public API
-- It can optionally fetch public on-chain data via JSON-RPC if rpc_url is provided.
+Aligned with upstream README:
+- Default local node / RPC preference
+- Etherscan fallback
+- ENS / price / tx inspection
+- Unsigned transaction construction
+- QR/verification flow hooks (platform-dependent)
 
-If you want full ABI encode/decode, install optional deps:
-- eth-abi
-- eth-utils
+Safety:
+- Never request seed phrases.
+- Refuse if secret material is pasted.
+- Never silently broadcast transactions.
+
+Dependencies: stdlib only.
+Limitations:
+- JSON-RPC here supports HTTP(S) endpoints only (not ws://).
+- Full ENS resolution and ERC20 calldata encoding require additional config/deps.
 """
 
 from __future__ import annotations
 
 import json
-import textwrap
+import os
+import re
+import urllib.parse
 import urllib.request
-import urllib.error
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 
+
+# ---------------------------
+# Utilities / Safety
+# ---------------------------
+
+_SECRET_PATTERNS = [
+    re.compile(r"\bseed phrase\b", re.IGNORECASE),
+    re.compile(r"\bmnemonic\b", re.IGNORECASE),
+    re.compile(r"\bprivate key\b", re.IGNORECASE),
+    re.compile(r"BEGIN\s+PRIVATE\s+KEY", re.IGNORECASE),
+    # naive hex private key-ish detector (64 hex chars)
+    re.compile(r"\b0x[a-f0-9]{64}\b", re.IGNORECASE),
+]
+
+
+def _refuse_if_secret_present(inputs: Dict[str, Any]) -> Optional[str]:
+    for _, v in inputs.items():
+        if isinstance(v, str):
+            for pat in _SECRET_PATTERNS:
+                if pat.search(v):
+                    return (
+                        "Security warning: it looks like secret key material may have been provided. "
+                        "Do NOT share private keys or seed phrases. I can’t process that. "
+                        "Please remove it and retry with only public information (tx hash, address, calldata, ABI)."
+                    )
+    return None
+
+
+def _as_json(obj: Any) -> str:
+    return json.dumps(obj, indent=2, sort_keys=True, default=str)
+
+
+# ---------------------------
+# JSON-RPC (HTTP only)
+# ---------------------------
 
 def _jsonrpc(rpc_url: str, method: str, params: list[Any], timeout_s: int = 20) -> Any:
-    """Minimal JSON-RPC client using stdlib only."""
-    payload = {
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": method,
-        "params": params,
-    }
+    if rpc_url.startswith("ws://") or rpc_url.startswith("wss://"):
+        raise RuntimeError("This action only supports HTTP(S) JSON-RPC endpoints (not ws://).")
+
+    payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
     data = json.dumps(payload).encode("utf-8")
 
     req = urllib.request.Request(
@@ -37,235 +77,269 @@ def _jsonrpc(rpc_url: str, method: str, params: list[Any], timeout_s: int = 20) 
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-
     with urllib.request.urlopen(req, timeout=timeout_s) as resp:
         raw = resp.read().decode("utf-8", errors="replace")
         out = json.loads(raw)
 
-    if "error" in out and out["error"] is not None:
+    if out.get("error"):
         raise RuntimeError(f"JSON-RPC error: {out['error']}")
     return out.get("result")
 
 
-def _safe_warn_if_secret_present(inputs: Dict[str, Any]) -> Optional[str]:
-    """
-    If user accidentally provided secret material in any text field, refuse.
-    This is a lightweight heuristic; you can improve it as needed.
-    """
-    suspicious_markers = [
-        "seed phrase",
-        "mnemonic",
-        "private key",
-        "BEGIN PRIVATE KEY",
-        "0x" + "a" * 64,  # simplistic marker; not a real key check
-    ]
-    for k, v in inputs.items():
-        if isinstance(v, str):
-            low = v.lower()
-            if any(m in low for m in suspicious_markers):
-                return (
-                    "Security warning: it looks like secret key material may have been provided. "
-                    "Do NOT share private keys or seed phrases. I can’t process or store that. "
-                    "Please remove it and try again with only public information (tx hash, address, calldata, ABI)."
-                )
+def _hex_to_int(x: Optional[str]) -> Optional[int]:
+    if x is None:
+        return None
+    if isinstance(x, str) and x.startswith("0x"):
+        return int(x, 16)
     return None
 
 
-def _selector(calldata_hex: str) -> Optional[str]:
+def _int_to_hex(n: int) -> str:
+    return hex(n)
+
+
+# ---------------------------
+# Etherscan (fallback)
+# ---------------------------
+
+def _etherscan_get(api_url: str, api_key: str, params: Dict[str, str], timeout_s: int = 20) -> Dict[str, Any]:
+    q = dict(params)
+    q["apikey"] = api_key
+    url = api_url.rstrip("/") + "/api?" + urllib.parse.urlencode(q)
+
+    with urllib.request.urlopen(url, timeout=timeout_s) as resp:
+        raw = resp.read().decode("utf-8", errors="replace")
+        return json.loads(raw)
+
+
+# ---------------------------
+# Intent routing
+# ---------------------------
+
+def _looks_like_ens(name: str) -> bool:
+    return isinstance(name, str) and "." in name and name.lower().endswith(".eth")
+
+
+def _normalize_amount(amount: str) -> Dict[str, Any]:
     """
-    Return 4-byte selector hex string (0x????????) if calldata has at least 4 bytes.
-    calldata_hex should be 0x-prefixed.
+    Minimal parser for README-style amounts:
+    - "0.01 ETH"
+    - "1337 finney"
+    Returns a dict with best-effort wei or notes.
     """
-    if not calldata_hex or not calldata_hex.startswith("0x"):
-        return None
-    hex_body = calldata_hex[2:]
-    if len(hex_body) < 8:
-        return None
-    return "0x" + hex_body[:8]
+    a = amount.strip()
+    m = re.match(r"^\s*([0-9]*\.?[0-9]+)\s*(eth|ether)\s*$", a, re.IGNORECASE)
+    if m:
+        val = float(m.group(1))
+        wei = int(val * 10**18)
+        return {"unit": "ETH", "value": val, "wei": wei}
+
+    m = re.match(r"^\s*([0-9]*\.?[0-9]+)\s*finney\s*$", a, re.IGNORECASE)
+    if m:
+        val = float(m.group(1))
+        wei = int(val * 10**15)
+        return {"unit": "finney", "value": val, "wei": wei}
+
+    # fallback: unknown
+    return {"raw": amount, "note": "Could not parse amount into wei. Provide like '0.01 ETH' or '1337 finney'."}
 
 
-def _try_decode_with_abi(abi_json_str: str, calldata_hex: str) -> Tuple[Optional[dict], Optional[str]]:
-    """
-    Best-effort calldata decoding if optional dependencies exist.
-    Returns (decoded, error_message).
-    """
-    try:
-        abi = json.loads(abi_json_str)
-        if not isinstance(abi, list):
-            return None, "ABI JSON must be a list of ABI items."
-    except Exception as e:
-        return None, f"ABI JSON parsing error: {e}"
-
-    sel = _selector(calldata_hex)
-    if not sel:
-        return None, "Calldata is missing or too short to contain a function selector."
-
-    # Optional deps
-    try:
-        from eth_utils import keccak  # type: ignore
-        from eth_abi import decode as eth_abi_decode  # type: ignore
-    except Exception:
-        return None, (
-            "Optional dependencies not installed for ABI decoding. "
-            "Install 'eth-abi' and 'eth-utils' to enable full decoding."
-        )
-
-    # Find function by selector
-    def func_selector(item: dict) -> Optional[str]:
-        if item.get("type") != "function":
-            return None
-        name = item.get("name")
-        inputs = item.get("inputs", [])
-        if not isinstance(inputs, list) or not isinstance(name, str):
-            return None
-        sig = name + "(" + ",".join(inp.get("type", "") for inp in inputs) + ")"
-        digest = keccak(text=sig)  # type: ignore
-        return "0x" + digest.hex()[:8]
-
-    fn_item = None
-    for item in abi:
-        if isinstance(item, dict) and func_selector(item) == sel:
-            fn_item = item
-            break
-
-    if not fn_item:
-        return None, f"No function in ABI matches selector {sel}."
-
-    inputs = fn_item.get("inputs", [])
-    types = [i.get("type") for i in inputs]
-    names = [i.get("name") or f"arg{idx}" for idx, i in enumerate(inputs)]
-
-    try:
-        data_bytes = bytes.fromhex(calldata_hex[2:])[4:]  # strip selector
-        decoded_vals = eth_abi_decode(types, data_bytes)  # type: ignore
-    except Exception as e:
-        return None, f"ABI decode error: {e}"
-
-    decoded = {
-        "selector": sel,
-        "function": fn_item.get("name"),
-        "signature": fn_item.get("name") + "(" + ",".join(types) + ")",
-        "args": {names[i]: decoded_vals[i] for i in range(len(decoded_vals))},
-    }
-    return decoded, None
-
+# ---------------------------
+# Main action entrypoint
+# ---------------------------
 
 def run(
     intent: str,
-    chain: str = "ethereum-mainnet",
+    chain: str = "mainnet",
     rpc_url: Optional[str] = None,
-    address: Optional[str] = None,
+    etherscan_api_url: Optional[str] = None,
+    etherscan_api_key: Optional[str] = None,
+    from: Optional[str] = None,  # noqa: A002
+    to: Optional[str] = None,
+    amount: Optional[str] = None,
+    token: Optional[str] = None,
     tx_hash: Optional[str] = None,
-    abi: Optional[str] = None,
-    data: Optional[str] = None,
+    payload: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """
-    OpenClaw action entrypoint.
-    Return a dict that the skill runtime can pass back to the model / user.
-    """
+    # Pull defaults from env to match README config section
+    rpc_url = rpc_url or os.getenv("RPC_URL") or "ws://127.0.0.1:8546"
+    etherscan_api_url = etherscan_api_url or os.getenv("ETHERSCAN_API_URL") or "https://etherscan.io"
+    etherscan_api_key = etherscan_api_key or os.getenv("ETHERSCAN_API_KEY")
+
     inputs = {
         "intent": intent,
         "chain": chain,
         "rpc_url": rpc_url,
-        "address": address,
+        "etherscan_api_url": etherscan_api_url,
+        "etherscan_api_key": etherscan_api_key,
+        "from": from,
+        "to": to,
+        "amount": amount,
+        "token": token,
         "tx_hash": tx_hash,
-        "abi": abi,
-        "data": data,
+        "payload": payload,
     }
 
-    secret_warning = _safe_warn_if_secret_present(inputs)
-    if secret_warning:
-        return {"response": secret_warning, "data": {"refused": True}}
+    secret_refusal = _refuse_if_secret_present(inputs)
+    if secret_refusal:
+        return {"response": secret_refusal, "data": {"refused": True}}
 
-    notes: list[str] = []
-    out: Dict[str, Any] = {"response": "", "data": {}}
+    data_out: Dict[str, Any] = {
+        "chain": chain,
+        "sources": [],
+    }
 
-    notes.append(f"Chain: {chain}")
+    # Optional structured payload
+    payload_obj: Optional[dict] = None
+    if payload:
+        try:
+            payload_obj = json.loads(payload)
+            data_out["payload"] = payload_obj
+        except Exception as e:
+            data_out["payload_error"] = f"payload JSON parse error: {e}"
 
-    # 1) If RPC + tx_hash, fetch tx + receipt
-    if rpc_url and tx_hash:
+    intent_l = intent.lower()
+
+    # ---------------------------
+    # 1) Price query (Etherscan fallback)
+    # ---------------------------
+    if "price" in intent_l and ("ethereum" in intent_l or "eth" in intent_l):
+        # Prefer Etherscan because it's simple and matches README example
+        if etherscan_api_key:
+            try:
+                resp = _etherscan_get(
+                    etherscan_api_url,
+                    etherscan_api_key,
+                    {"module": "stats", "action": "ethprice"},
+                )
+                data_out["sources"].append("etherscan:stats.ethprice")
+                data_out["ethprice_raw"] = resp
+                # best-effort extraction
+                result = resp.get("result", {}) if isinstance(resp, dict) else {}
+                price_usd = result.get("ethusd")
+                out_obj = {"price_usd": price_usd, "note": "Gas price is network-dependent; use RPC for live gas price."}
+                return {
+                    "response": "Fetched ETH price via Etherscan (fallback path).",
+                    "data": {**data_out, "price": out_obj},
+                }
+            except Exception as e:
+                data_out["etherscan_error"] = str(e)
+
+        return {
+            "response": (
+                "I couldn’t fetch ETH price because Etherscan is not configured (missing ETHERSCAN_API_KEY) "
+                "or the request failed. Provide etherscan_api_key (or set env ETHERSCAN_API_KEY), "
+                "or provide an HTTP(S) rpc_url to query chain data."
+            ),
+            "data": data_out,
+        }
+
+    # ---------------------------
+    # 2) Explain transaction (RPC)
+    # ---------------------------
+    if ("explain" in intent_l or "receipt" in intent_l or "transaction" in intent_l) and tx_hash:
         try:
             tx = _jsonrpc(rpc_url, "eth_getTransactionByHash", [tx_hash])
-            receipt = _jsonrpc(rpc_url, "eth_getTransactionReceipt", [tx_hash])
-            out["data"]["tx"] = tx
-            out["data"]["receipt"] = receipt
+            rcpt = _jsonrpc(rpc_url, "eth_getTransactionReceipt", [tx_hash])
+            data_out["sources"].append("rpc:eth_getTransactionByHash,eth_getTransactionReceipt")
+            data_out["tx"] = tx
+            data_out["receipt"] = rcpt
 
-            if tx is None:
-                notes.append("Transaction not found on this RPC/chain for the given tx_hash.")
-            else:
-                notes.append("Fetched transaction via JSON-RPC.")
-            if receipt is None:
-                notes.append("Receipt not found yet (tx may be pending) or RPC does not have it.")
-            else:
-                notes.append("Fetched receipt via JSON-RPC.")
-        except urllib.error.URLError as e:
-            notes.append(f"RPC network error: {e}")
+            summary = {
+                "from": (tx or {}).get("from") if isinstance(tx, dict) else None,
+                "to": (tx or {}).get("to") if isinstance(tx, dict) else None,
+                "value_wei": _hex_to_int((tx or {}).get("value")) if isinstance(tx, dict) else None,
+                "status": (rcpt or {}).get("status") if isinstance(rcpt, dict) else None,
+                "gas_used": _hex_to_int((rcpt or {}).get("gasUsed")) if isinstance(rcpt, dict) else None,
+                "logs_count": len((rcpt or {}).get("logs", [])) if isinstance(rcpt, dict) else None,
+            }
+            return {"response": "Fetched transaction + receipt via JSON-RPC.", "data": {**data_out, "summary": summary}}
         except Exception as e:
-            notes.append(f"RPC error: {e}")
+            return {
+                "response": f"RPC tx lookup failed. If your default is ws://127.0.0.1:8546, provide an HTTP(S) rpc_url. Error: {e}",
+                "data": data_out,
+            }
 
-    # 2) If calldata present, extract selector
-    if data and isinstance(data, str) and data.startswith("0x"):
-        sel = _selector(data)
-        if sel:
-            out["data"]["selector"] = sel
-            notes.append(f"Detected function selector: {sel}")
+    # ---------------------------
+    # 3) ENS lookup (placeholder unless ENS contracts configured)
+    # ---------------------------
+    if ("ens" in intent_l or "find" in intent_l) and (from and _looks_like_ens(from) or to and _looks_like_ens(to) or ".eth" in intent_l):
+        return {
+            "response": (
+                "ENS resolution requires calling the ENS registry/resolver contracts via RPC (eth_call) "
+                "and knowing the ENS registry address for the target chain. "
+                "This action is currently configured as a placeholder; provide/implement ENS_REGISTRY_ADDRESS "
+                "and resolver logic (or add a dependency like web3.py) to fully resolve .eth names."
+            ),
+            "data": {**data_out, "ens": {"note": "placeholder", "requested_from": from, "requested_to": to}},
+        }
 
-    # 3) If ABI + calldata, try decode
-    if abi and data:
-        decoded, err = _try_decode_with_abi(abi, data)
-        if decoded:
-            out["data"]["decoded_calldata"] = decoded
-            notes.append("Decoded calldata using provided ABI.")
-        else:
-            notes.append(f"Could not decode calldata: {err}")
+    # ---------------------------
+    # 4) Build unsigned ETH transfer tx (nonce + gas price)
+    # ---------------------------
+    if ("build" in intent_l or "construct" in intent_l or "create" in intent_l) and ("send" in intent_l or "transfer" in intent_l) and to and amount and (token is None):
+        amt = _normalize_amount(amount)
+        unsigned = {
+            "to": to,
+            "value": _int_to_hex(amt["wei"]) if "wei" in amt else None,
+            "data": "0x",
+        }
 
-    # 4) Compose human-readable response (safe summary)
-    summary_lines = [
-        "Agent Smeth (safe mode): I can help analyze and prepare Ethereum interactions, but I do not sign or broadcast transactions.",
-        "",
-        "What I understood:",
-        f"- Intent: {intent}",
-        f"- Chain: {chain}",
-    ]
-    if address:
-        summary_lines.append(f"- Address: {address}")
-    if tx_hash:
-        summary_lines.append(f"- Tx hash: {tx_hash}")
-    if rpc_url:
-        summary_lines.append("- RPC: provided")
-    if data:
-        summary_lines.append(f"- Data: provided ({len(data)} chars)")
-    if abi:
-        summary_lines.append("- ABI: provided")
+        # Try to enrich with nonce + gas price if we can
+        # Note: from may be missing; if so, we return tx skeleton
+        if from and re.fullmatch(r"0x[a-fA-F0-9]{40}", from):
+            try:
+                nonce_hex = _jsonrpc(rpc_url, "eth_getTransactionCount", [from, "latest"])
+                gasprice_hex = _jsonrpc(rpc_url, "eth_gasPrice", [])
+                data_out["sources"].append("rpc:eth_getTransactionCount,eth_gasPrice")
+                unsigned["nonce"] = nonce_hex
+                unsigned["gasPrice"] = gasprice_hex
+            except Exception as e:
+                data_out["rpc_enrich_error"] = str(e)
 
-    summary_lines.append("")
-    summary_lines.append("Notes / Results:")
-    summary_lines.extend([f"- {n}" for n in notes])
+        return {
+            "response": (
+                "Constructed an unsigned ETH transfer transaction object. "
+                "Review carefully, then sign with a wallet or a dedicated signing agent. "
+                "Broadcasting is irreversible."
+            ),
+            "data": {**data_out, "unsignedtx": unsigned, "amount_parsed": amt},
+        }
 
-    # Broadcasting warning when intent implies sending
-    sending_keywords = ["send", "broadcast", "submit", "sign", "transfer", "swap", "approve"]
-    if any(k in intent.lower() for k in sending_keywords):
-        summary_lines.append("")
-        summary_lines.append(
-            "Warning: Broadcasting a transaction is irreversible. This skill does not sign or broadcast transactions. "
-            "Use a wallet to sign and submit, and double-check chain, contract address, amounts, and gas settings."
-        )
+    # ---------------------------
+    # 5) ERC20 transfer (placeholder unless token address + encoder configured)
+    # ---------------------------
+    if token and ("erc20" in intent_l or "token" in intent_l or "transfer" in intent_l):
+        return {
+            "response": (
+                "ERC-20 transfer construction requires the token contract address on this chain and "
+                "calldata encoding for transfer(address,uint256). "
+                "This action currently provides a placeholder. Add a token-address registry and an ABI encoder "
+                "(e.g., eth-abi/eth-utils) to output the full unsignedtx."
+            ),
+            "data": {**data_out, "erc20": {"token": token, "from": from, "to": to, "amount": amount, "note": "placeholder"}},
+        }
 
-    out["response"] = "\n".join(summary_lines).strip()
+    # ---------------------------
+    # 6) Verification / QR flow hook (ADILOS + SIMPLETH)
+    # ---------------------------
+    if "verify" in intent_l and "account" in intent_l:
+        return {
+            "response": (
+                "Verification flow (ADILOS + QR) is platform-dependent. "
+                "High-level steps: generate an ADILOS challenge; display as QR; user signs/responds via SIMPLETH; "
+                "scan response QR; derive verified pubkey/address; optionally reverse-lookup ENS."
+            ),
+            "data": {**data_out, "verify_flow": {"challenge": "platform-dependent", "note": "hook"}},
+        }
 
-    return out
-
-
-# For local manual testing:
-if __name__ == "__main__":
-    demo = run(
-        intent="Explain this transaction.",
-        chain="ethereum-mainnet",
-        rpc_url=None,
-        tx_hash=None,
-        abi=None,
-        data="0xa9059cbb" + "00" * 32,
-    )
-    print(demo["response"])
-    print(json.dumps(demo["data"], indent=2))
+    # Default: return a concise “what I can do + what’s missing”
+    return {
+        "response": (
+            "I can help with ETH price (Etherscan), tx explanation (RPC), and building unsigned tx objects. "
+            "For full ENS resolution, ERC-20 calldata building, QR signing, and broadcast/signing, additional "
+            "runtime integrations are needed (ENS contract addresses, ABI encoder, camera/QR IO, and signer)."
+        ),
+        "data": data_out,
+    }
 

@@ -1,60 +1,93 @@
 name: agent-smeth
-version: 0.1.0
-description: "An AI agent that enables humans and other agents to use Ethereum."
+version: 0.2.0
+description: "AI-powered Ethereum interaction layer: query chain data, build transactions, and support human/agent signing flows (QR + unsigned tx)."
 author: bitsanity
 license: Apache-2.0
 repository: "https://github.com/bitsanity/agent-smeth"
 
 tags:
   - ethereum
-  - web3
-  - smart-contracts
   - evm
-  - blockchain
+  - web3
+  - ens
+  - etherscan
+  - smart-contracts
+  - agent-to-agent
+  - qr-signing
 
 entrypoint:
-  type: prompt
+  type: hybrid
   system: prompts/system.md
   user: prompts/user.md
+  action: actions/main.py
+
+schemas:
+  input: schemas/input.json
 
 inputs:
   - name: intent
     type: string
     required: true
-    description: "What you want to do (e.g., 'explain this transaction', 'decode logs', 'draft a contract call', 'estimate gas')."
+    description: "Natural language instruction (e.g., 'find alice.eth in ENS', 'what is ETH price', 'build an ETH transfer tx', 'verify my account')."
+
   - name: chain
     type: string
     required: false
-    default: "ethereum-mainnet"
-    description: "Target chain/network (e.g., ethereum-mainnet, sepolia, polygon, arbitrum)."
+    default: "mainnet"
+    description: "Network name (mainnet, sepolia, etc.)."
+
   - name: rpc_url
     type: string
     required: false
-    description: "Optional JSON-RPC endpoint URL to query on-chain data."
-  - name: address
+    description: "Optional JSON-RPC HTTP(S) endpoint. If omitted, uses env RPC_URL or default ws://127.0.0.1:8546 (note: ws default may not be supported by this action)."
+
+  - name: etherscan_api_url
     type: string
     required: false
-    description: "Optional wallet or contract address relevant to the request."
+    description: "Optional Etherscan base URL. If omitted, uses env ETHERSCAN_API_URL or https://etherscan.io."
+
+  - name: etherscan_api_key
+    type: string
+    required: false
+    description: "Optional Etherscan API key. If omitted, uses env ETHERSCAN_API_KEY."
+
+  - name: from
+    type: string
+    required: false
+    description: "Optional sender address or ENS name (e.g., alice.eth)."
+
+  - name: to
+    type: string
+    required: false
+    description: "Optional recipient address or ENS name."
+
+  - name: amount
+    type: string
+    required: false
+    description: "Optional amount (e.g., '0.01 ETH', '1337 finney', '100.0')."
+
+  - name: token
+    type: string
+    required: false
+    description: "Optional token symbol for ERC-20 transfers (e.g., USDT)."
+
   - name: tx_hash
     type: string
     required: false
-    description: "Optional transaction hash to analyze."
-  - name: abi
+    description: "Optional tx hash to explain."
+
+  - name: payload
     type: string
     required: false
-    description: "Optional contract ABI JSON (string) for encoding/decoding calls/events."
-  - name: data
-    type: string
-    required: false
-    description: "Optional raw calldata, logs, or other payload to decode."
+    description: "Optional JSON string for structured requests (advanced)."
 
 outputs:
   - name: response
     type: string
-    description: "A clear, step-by-step answer and (when relevant) structured JSON snippets for encoding/decoding."
+    description: "Human-readable response plus (when relevant) structured JSON."
 
 constraints:
-  - "Do not request or store private keys or seed phrases."
-  - "Warn the user before any action that would broadcast a transaction."
-  - "Be explicit about assumptions and network/chain context."
+  - "Never request seed phrases."
+  - "If signing is enabled (PRIVATE_KEY env), only sign on explicit user request and show a clear warning."
+  - "Never silently broadcast transactions; require explicit 'broadcast/send' intent."
 

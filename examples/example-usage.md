@@ -1,102 +1,88 @@
-# Agent Smeth — Example Usage
+# agent-smeth — Example Usage (OpenClaw Skill)
 
-These examples show typical inputs you can pass to the skill (via the `skill.yaml` inputs) and the kind of output you should expect.
+These examples mirror the upstream README behaviors: ENS lookup, price query via Etherscan fallback, ETH send flow, agent-to-agent unsigned tx flow, and verification/QR flow hooks.
 
-> Notes:
-> - This skill **may** use a human to sign transactions and broadcast with consent
-> - Never provide private keys or seed phrases.
+> Safety: This skill never asks for seed phrases. Broadcasting is irreversible—always double-check chain, addresses, and amounts.
 
 ---
 
-## Example 1 — Explain a transaction (with RPC)
+## 1) ENS lookup
 
 **Input**
-- intent: "Explain what this transaction did and summarize the receipt."
-- chain: "ethereum-mainnet"
-- rpc_url: "https://YOUR-RPC-URL"
-- tx_hash: "0xYOUR_TRANSACTION_HASH"
+- intent: "find alice.eth in ENS"
 
-**Expected Output**
-- A summary of the transaction:
-  - from / to
-  - value (ETH)
-  - gas used / effective gas price (if receipt available)
-  - status (success/failure)
-  - logs count
-- Any detected contract creation (to == null)
-- Clear next steps if RPC call fails (rate limits, invalid hash, etc.)
+**Expected**
+- Resolve alice.eth -> 0x...
+- Output a structured result object.
 
 ---
 
-## Example 2 — Decode calldata (with ABI)
+## 2) ETH price (Etherscan fallback)
 
 **Input**
-- intent: "Decode this calldata using the ABI."
-- chain: "sepolia"
-- data: "0xA9059CBB000000000000000000000000...<snip>"
-- abi: |
-  [
-    {
-      "type": "function",
-      "name": "transfer",
-      "stateMutability": "nonpayable",
-      "inputs": [
-        {"name": "to", "type": "address"},
-        {"name": "amount", "type": "uint256"}
-      ],
-      "outputs": [{"name": "", "type": "bool"}]
-    }
-  ]
+- intent: "what is the current price of Ethereum"
+- etherscan_api_key: "YOUR_KEY"   (or set env ETHERSCAN_API_KEY)
 
-**Expected Output**
-- Identified function selector (first 4 bytes)
-- Function name: `transfer`
-- Decoded params:
-  - to: 0x...
-  - amount: 12345 (and optionally in token units if decimals are provided separately)
-- If ABI decoding libraries are missing, it should still:
-  - show selector
-  - explain what is needed to fully decode (ABI + decoder dependency)
+**Expected**
+- Uses Etherscan if RPC is not available.
+- Returns `{ price_usd, gasprice_gwei (if available) }`.
 
 ---
 
-## Example 3 — Encode a function call (ABI + arguments)
+## 3) Explain a transaction (RPC)
 
 **Input**
-- intent: "Create calldata for transfer(to=0xabc..., amount=1000000000000000000)."
-- abi: |
-  [
-    {
-      "type": "function",
-      "name": "transfer",
-      "stateMutability": "nonpayable",
-      "inputs": [
-        {"name": "to", "type": "address"},
-        {"name": "amount", "type": "uint256"}
-      ],
-      "outputs": [{"name": "", "type": "bool"}]
-    }
-  ]
+- intent: "explain this transaction"
+- rpc_url: "https://YOUR-RPC"
+- tx_hash: "0x..."
 
-**Expected Output**
-- Function selector
-- Encoded calldata: `0x...`
-- A warning:
-  - This is **not** signed
-  - Broadcasting requires a wallet
-  - Confirm network/chain and contract address before sending
+**Expected**
+- Fetch tx + receipt via JSON-RPC.
+- Summarize status, from/to, value, gas used, logs count.
+- Provide raw tx/receipt in structured output.
 
 ---
 
-## Troubleshooting
+## 4) Build an ETH transfer transaction (unsigned)
 
-### “RPC error / invalid response”
-- Confirm `rpc_url` is correct and supports JSON-RPC.
-- Confirm the tx hash exists on the selected chain.
-- Try a different provider (or add an API key if required).
+**Input**
+- intent: "build a transaction to send 0.01 ETH to 0xRecipientAddress"
+- rpc_url: "https://YOUR-RPC"
+- to: "0xRecipientAddress"
+- amount: "0.01 ETH"
 
-### “Cannot decode ABI”
-- Ensure the ABI is valid JSON.
-- Ensure the function exists in the ABI.
-- Provide the correct calldata (must start with `0x`).
+**Expected**
+- Fetch nonce + gas price (RPC).
+- Construct an unsigned tx object.
+- Return it as JSON for wallet signing.
+
+---
+
+## 5) Agent-to-agent ERC-20 transfer flow (unsigned tx handoff)
+
+**Input**
+- intent: "create an unsigned ERC20 transfer of 100 USDT from alice.eth to 0xRecipientAddress"
+- rpc_url: "https://YOUR-RPC"
+- from: "alice.eth"
+- to: "0xRecipientAddress"
+- amount: "100"
+- token: "USDT"
+
+**Expected**
+- Resolve ENS -> from address.
+- Build an unsigned tx skeleton:
+  - to = token contract address (if known/configured)
+  - data = ERC20 transfer calldata (if encoder available; otherwise explain what’s missing)
+- Output `{ from, unsignedtx }` for a signing agent to sign.
+
+---
+
+## 6) Verification / QR flow (hook)
+
+**Input**
+- intent: "Verify my Ethereum account"
+
+**Expected**
+- Returns an instruction payload describing the QR challenge flow (ADILOS/SIMPLETH),
+  or a placeholder explaining that QR camera IO is platform-dependent.
 
