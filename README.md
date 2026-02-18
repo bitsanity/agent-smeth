@@ -236,7 +236,7 @@ agent-smeth:
 Common configuration options may include:
 
 * `RPC_URL` – Recommended, Local Ethereum node, default ```ws://127.0.0.1:8546```
-* `ETHERSCAN_API_URL` - Etherscan API URL default ```https://etherscan.io```
+* `ETHERSCAN_API_URL` - Etherscan API URL default ```https://api.etherscan.io/v2/api/```
 * `ETHERSCAN_API_KEY` - Required to use the Etherscan API
 * `HUMAN_PUB_KEY` - Optional Human's Ethereum public key to avoid repeating the Verification exchange
 * `PRIVATE_KEY` – Optional Agent wallet private key (use environment variables)

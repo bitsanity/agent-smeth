@@ -154,7 +154,7 @@ def run(
     rpc_url: Optional[str] = None,
     etherscan_api_url: Optional[str] = None,
     etherscan_api_key: Optional[str] = None,
-    from: Optional[str] = None,  # noqa: A002
+    from_: Optional[str] = None,
     to: Optional[str] = None,
     amount: Optional[str] = None,
     token: Optional[str] = None,
@@ -172,7 +172,7 @@ def run(
         "rpc_url": rpc_url,
         "etherscan_api_url": etherscan_api_url,
         "etherscan_api_key": etherscan_api_key,
-        "from": from,
+        "from": from_,
         "to": to,
         "amount": amount,
         "token": token,
@@ -203,7 +203,9 @@ def run(
     # ---------------------------
     # 1) Price query (Etherscan fallback)
     # ---------------------------
-    if "price" in intent_l and ("ethereum" in intent_l or "eth" in intent_l):
+    if "price" in intent_l and (
+        "ethereum" in intent_l or re.search(r"\beth\b", intent_l) or "agent-smeth" in intent_l
+    ):
         # Prefer Etherscan because it's simple and matches README example
         if etherscan_api_key:
             try:
@@ -263,7 +265,9 @@ def run(
     # ---------------------------
     # 3) ENS lookup (placeholder unless ENS contracts configured)
     # ---------------------------
-    if ("ens" in intent_l or "find" in intent_l) and (from and _looks_like_ens(from) or to and _looks_like_ens(to) or ".eth" in intent_l):
+    if ("ens" in intent_l or "find" in intent_l) and (
+        from_ and _looks_like_ens(from_) or to and _looks_like_ens(to) or ".eth" in intent_l
+    ):
         return {
             "response": (
                 "ENS resolution requires calling the ENS registry/resolver contracts via RPC (eth_call) "
@@ -271,7 +275,7 @@ def run(
                 "This action is currently configured as a placeholder; provide/implement ENS_REGISTRY_ADDRESS "
                 "and resolver logic (or add a dependency like web3.py) to fully resolve .eth names."
             ),
-            "data": {**data_out, "ens": {"note": "placeholder", "requested_from": from, "requested_to": to}},
+            "data": {**data_out, "ens": {"note": "placeholder", "requested_from": from_, "requested_to": to}},
         }
 
     # ---------------------------
@@ -287,9 +291,9 @@ def run(
 
         # Try to enrich with nonce + gas price if we can
         # Note: from may be missing; if so, we return tx skeleton
-        if from and re.fullmatch(r"0x[a-fA-F0-9]{40}", from):
+        if from_ and re.fullmatch(r"0x[a-fA-F0-9]{40}", from_):
             try:
-                nonce_hex = _jsonrpc(rpc_url, "eth_getTransactionCount", [from, "latest"])
+                nonce_hex = _jsonrpc(rpc_url, "eth_getTransactionCount", [from_, "latest"])
                 gasprice_hex = _jsonrpc(rpc_url, "eth_gasPrice", [])
                 data_out["sources"].append("rpc:eth_getTransactionCount,eth_gasPrice")
                 unsigned["nonce"] = nonce_hex
@@ -317,7 +321,7 @@ def run(
                 "This action currently provides a placeholder. Add a token-address registry and an ABI encoder "
                 "(e.g., eth-abi/eth-utils) to output the full unsignedtx."
             ),
-            "data": {**data_out, "erc20": {"token": token, "from": from, "to": to, "amount": amount, "note": "placeholder"}},
+            "data": {**data_out, "erc20": {"token": token, "from": from_, "to": to, "amount": amount, "note": "placeholder"}},
         }
 
     # ---------------------------
@@ -342,4 +346,3 @@ def run(
         ),
         "data": data_out,
     }
-
