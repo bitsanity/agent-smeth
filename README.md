@@ -21,10 +21,10 @@ The goal is to simplify blockchain usage through intelligent agent abstraction.
 
 ## Features
 
-* 🔑 QR code exchange with human to sign transactions (see https://github.com/bitsanity/simpleth)
+* 🔑 QR code exchange with human to sign transactions. (see https://github.com/bitsanity/simpleth, https://github.com/bitsanity/ADILOS and https://github.com/bitsanity/adilosjs)
 * 🔗 Default: connects to Ethereum using a local full node, or
 * 🔌 Fallback: connects to Ethereum via Etherscan's API at https://etherscan.io (API key required)
-* 💰 Agent can use its own Ethereum wallet
+* 💰 Agent can use its own Ethereum wallet, make smart contract calls and spend its own funds
 * 🧾 Smart contract calls & transactions
 * 📊 Blockchain data queries
 * 🤖 Agent-to-agent Ethereum operations
@@ -35,9 +35,10 @@ The goal is to simplify blockchain usage through intelligent agent abstraction.
 
 ## Installation
 
-1. Install OpenClaw from https://openclaw.ai
+1. Install OpenClaw from https://openclaw.ai (and requires nodejs)
 2. Connect OpenClaw to an AI
-3. Install the web3js npm module if using a local full node
+3. Add agent-smith.zip to OpenClaw
+4. Install SIMPLETH or any ADILOS-compatible app on a smartphone
 
 ### Clone the repository
 
@@ -50,8 +51,12 @@ cd agent-smeth
 
 ```bash
 curl -fsSL https://openclaw.ai/install.sh | bash
-npm install web3js
+npm install adilosjs
 ```
+
+note: agent-smeth uses adilosjs to generate cryptographic challenges and parse
+      replies to verify the caller's pubkey and to get the caller to sign
+      something
 
 ---
 
@@ -72,7 +77,7 @@ or
 agent-smeth replies:
 
 ```
-{ name: 'alice.eth', result: {ensresult} }
+{ name: 'alice.eth', result: {ens result} }
 ```
 
 ---
@@ -93,7 +98,7 @@ agent-smeth:
 1. consults Etherscan.io
 2. replies:
 ```
-{ price: 2000 USD, gasprice: 0.1 gwei }
+{ price: 4242.69 USD, today: "-2.73%", gasprice: 0.1 gwei }
 ```
 
 ---
@@ -196,7 +201,12 @@ agent-smeth:
 4. Performs a reverse-lookup in ENS to determine if the address has a name
 5. replies
 ```
-{ hello: 0xVerifiedAccountAddress, ens: 'bitsanity.eth' }
+{
+  hello: 0xVerifiedAccountAddress,
+  ens: 'bitsanity.eth',
+  balance: 0.01,
+  nonce: 3
+}
 ```
 
 result: agent-smeth knows the human's Verified Account and ENS-name for use in future transactions
@@ -215,8 +225,8 @@ agent-smeth:
 2. performs the verify interaction if necessary to know the Verified Account
 3. fetches the Verified Account nonce, the Ethereum gas price and estimated gas limit
 4. constructs the appropriate Ethereum transaction
-5. generates and presents a hashed transaction to the user as a QR code
-6. uses the camera to obtain the user's digital signature
+5. generates and presents a hashed transaction to the user shown as a QR code
+6. uses the camera to obtain the user's digital signature shown as a QR code
 7. adds the user's digital signature to the transaction data
 8. broadcasts the transaction to Ethereum
 
