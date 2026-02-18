@@ -37,7 +37,7 @@ The goal is to simplify blockchain usage through intelligent agent abstraction.
 
 1. Install OpenClaw from https://openclaw.ai
 2. Connect OpenClaw to an AI
-3. Install web3j
+3. Install the web3js npm module if using a local full node
 
 ### Clone the repository
 
