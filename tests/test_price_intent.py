@@ -16,7 +16,7 @@ class TestCurrentPriceIntent(unittest.TestCase):
         result = run(
             intent="agent-smeth gets current price",
             etherscan_api_key="test-key",
-            etherscan_api_url="https://etherscan.io",
+            etherscan_api_url="https://api.etherscan.io/v2/api/",
         )
 
         self.assertEqual(result["response"], "Fetched ETH price via Etherscan (fallback path).")
@@ -24,7 +24,7 @@ class TestCurrentPriceIntent(unittest.TestCase):
         self.assertEqual(result["data"]["price"]["price_usd"], "4242.69")
         self.assertIn("etherscan:stats.ethprice", result["data"]["sources"])
         mock_etherscan_get.assert_called_once_with(
-            "https://etherscan.io",
+            "https://api.etherscan.io/v2/api/",
             "test-key",
             {"module": "stats", "action": "ethprice"},
         )
