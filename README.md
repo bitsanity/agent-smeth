@@ -51,7 +51,7 @@ cd agent-smeth
 
 ```bash
 curl -fsSL https://openclaw.ai/install.sh | bash
-npm install adilosjs
+npm install web3js adilosjs
 ```
 
 note: agent-smeth uses adilosjs to generate cryptographic challenges and parse
