@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import urllib.parse
 import urllib.request
 from typing import Any, Dict, Optional
@@ -58,6 +59,11 @@ def _refuse_if_secret_present(inputs: Dict[str, Any]) -> Optional[str]:
 
 def _as_json(obj: Any) -> str:
     return json.dumps(obj, indent=2, sort_keys=True, default=str)
+
+
+def _zbar_tools_installed() -> bool:
+    # zbar-tools commonly provides zbarimg/zbarcam binaries
+    return bool(shutil.which("zbarimg") or shutil.which("zbarcam"))
 
 
 # ---------------------------
@@ -188,6 +194,15 @@ def run(
         "tx_hash": tx_hash,
         "payload": payload,
     }
+
+    if not _zbar_tools_installed():
+        return {
+            "response": (
+                "Startup check failed: zbar-tools is not installed. "
+                "Install it first (e.g., 'sudo apt-get install zbar-tools')."
+            ),
+            "data": {"startup_check": {"zbar_tools_installed": False}},
+        }
 
     secret_refusal = _refuse_if_secret_present(inputs)
     if secret_refusal:
