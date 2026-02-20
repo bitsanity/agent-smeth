@@ -98,6 +98,10 @@ def _int_to_hex(n: int) -> str:
     return hex(n)
 
 
+def _pad32(hex_no_0x: str) -> str:
+    return hex_no_0x.rjust(64, "0")
+
+
 # ---------------------------
 # Etherscan (fallback)
 # ---------------------------
@@ -295,7 +299,35 @@ def run(
         }
 
     # ---------------------------
-    # 3) Balance lookup (RPC)
+    # 3) Token balance (ERC-20 balanceOf via RPC)
+    # ---------------------------
+    if ("token balance" in intent_l or ("balance" in intent_l and token)) and (from_ or to):
+        addr = from_ or to
+        if addr and token and re.fullmatch(r"0x[a-fA-F0-9]{40}", addr) and re.fullmatch(r"0x[a-fA-F0-9]{40}", token):
+            try:
+                # balanceOf(address) selector = 0x70a08231
+                addr_noprefix = addr[2:]
+                data = "0x70a08231" + _pad32(addr_noprefix)
+                call_obj = {"to": token, "data": data}
+                bal_hex = _jsonrpc(rpc_url, "eth_call", [call_obj, "latest"])
+                data_out["sources"].append("rpc:eth_call(balanceOf)")
+                bal_raw = _hex_to_int(bal_hex)
+                return {
+                    "response": "Fetched ERC-20 token balance via JSON-RPC.",
+                    "data": {**data_out, "token_balance": {"address": addr, "token": token, "raw": bal_raw}},
+                }
+            except Exception as e:
+                return {
+                    "response": f"RPC token balance lookup failed. Provide an HTTP(S) rpc_url. Error: {e}",
+                    "data": data_out,
+                }
+        return {
+            "response": "Provide valid 0x address in from_/to and token contract address.",
+            "data": data_out,
+        }
+
+    # ---------------------------
+    # 4) Balance lookup (RPC)
     # ---------------------------
     if ("balance" in intent_l) and (from_ or to):
         addr = from_ or to
@@ -320,7 +352,7 @@ def run(
         }
 
     # ---------------------------
-    # 4) Explain transaction (RPC)
+    # 5) Explain transaction (RPC)
     # ---------------------------
     if ("explain" in intent_l or "receipt" in intent_l or "transaction" in intent_l) and tx_hash:
         try:
