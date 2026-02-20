@@ -382,7 +382,7 @@ def run(
         }
 
     # ---------------------------
-    # 5) Explain transaction (RPC)
+    # 3) Explain transaction (RPC)
     # ---------------------------
     if ("explain" in intent_l or "receipt" in intent_l or "transaction" in intent_l) and tx_hash:
         try:
