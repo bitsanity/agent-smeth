@@ -295,7 +295,32 @@ def run(
         }
 
     # ---------------------------
-    # 3) Explain transaction (RPC)
+    # 3) Balance lookup (RPC)
+    # ---------------------------
+    if ("balance" in intent_l) and (from_ or to):
+        addr = from_ or to
+        if addr and re.fullmatch(r"0x[a-fA-F0-9]{40}", addr):
+            try:
+                bal_hex = _jsonrpc(rpc_url, "eth_getBalance", [addr, "latest"])
+                data_out["sources"].append("rpc:eth_getBalance")
+                bal_wei = _hex_to_int(bal_hex)
+                bal_eth = (bal_wei / 10**18) if bal_wei is not None else None
+                return {
+                    "response": "Fetched address balance via JSON-RPC.",
+                    "data": {**data_out, "balance": {"address": addr, "wei": bal_wei, "eth": bal_eth}},
+                }
+            except Exception as e:
+                return {
+                    "response": f"RPC balance lookup failed. Provide an HTTP(S) rpc_url. Error: {e}",
+                    "data": data_out,
+                }
+        return {
+            "response": "Provide a valid 0x address in from_ or to to fetch balance.",
+            "data": data_out,
+        }
+
+    # ---------------------------
+    # 4) Explain transaction (RPC)
     # ---------------------------
     if ("explain" in intent_l or "receipt" in intent_l or "transaction" in intent_l) and tx_hash:
         try:
