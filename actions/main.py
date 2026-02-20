@@ -304,23 +304,53 @@ def run(
     if ("token balance" in intent_l or ("balance" in intent_l and token)) and (from_ or to):
         addr = from_ or to
         if addr and token and re.fullmatch(r"0x[a-fA-F0-9]{40}", addr) and re.fullmatch(r"0x[a-fA-F0-9]{40}", token):
-            try:
-                # balanceOf(address) selector = 0x70a08231
-                addr_noprefix = addr[2:]
-                data = "0x70a08231" + _pad32(addr_noprefix)
-                call_obj = {"to": token, "data": data}
-                bal_hex = _jsonrpc(rpc_url, "eth_call", [call_obj, "latest"])
-                data_out["sources"].append("rpc:eth_call(balanceOf)")
-                bal_raw = _hex_to_int(bal_hex)
-                return {
-                    "response": "Fetched ERC-20 token balance via JSON-RPC.",
-                    "data": {**data_out, "token_balance": {"address": addr, "token": token, "raw": bal_raw}},
-                }
-            except Exception as e:
-                return {
-                    "response": f"RPC token balance lookup failed. Provide an HTTP(S) rpc_url. Error: {e}",
-                    "data": data_out,
-                }
+            # Prefer RPC if HTTP(S) URL is provided
+            if rpc_url and not rpc_url.startswith("ws://") and not rpc_url.startswith("wss://"):
+                try:
+                    # balanceOf(address) selector = 0x70a08231
+                    addr_noprefix = addr[2:]
+                    data = "0x70a08231" + _pad32(addr_noprefix)
+                    call_obj = {"to": token, "data": data}
+                    bal_hex = _jsonrpc(rpc_url, "eth_call", [call_obj, "latest"])
+                    data_out["sources"].append("rpc:eth_call(balanceOf)")
+                    bal_raw = _hex_to_int(bal_hex)
+                    return {
+                        "response": "Fetched ERC-20 token balance via JSON-RPC.",
+                        "data": {**data_out, "token_balance": {"address": addr, "token": token, "raw": bal_raw}},
+                    }
+                except Exception as e:
+                    data_out["rpc_error"] = str(e)
+
+            # Fallback to Etherscan token balance
+            if etherscan_api_key:
+                try:
+                    params = {
+                        "module": "account",
+                        "action": "tokenbalance",
+                        "contractaddress": token,
+                        "address": addr,
+                        "tag": "latest",
+                    }
+                    if "/v2/" in (etherscan_api_url or ""):
+                        chainid_map = {"mainnet": "1", "sepolia": "11155111", "holesky": "17000"}
+                        params["chainid"] = chainid_map.get(chain, "1")
+
+                    resp = _etherscan_get(etherscan_api_url, etherscan_api_key, params)
+                    data_out["sources"].append("etherscan:account.tokenbalance")
+                    data_out["tokenbalance_raw"] = resp
+                    result = resp.get("result") if isinstance(resp, dict) else None
+                    bal_raw = int(result) if isinstance(result, str) and result.isdigit() else None
+                    return {
+                        "response": "Fetched ERC-20 token balance via Etherscan.",
+                        "data": {**data_out, "token_balance": {"address": addr, "token": token, "raw": bal_raw}},
+                    }
+                except Exception as e:
+                    data_out["etherscan_error"] = str(e)
+
+            return {
+                "response": "I couldn’t fetch token balance. Provide an HTTP(S) rpc_url or configure Etherscan.",
+                "data": data_out,
+            }
         return {
             "response": "Provide valid 0x address in from_/to and token contract address.",
             "data": data_out,
