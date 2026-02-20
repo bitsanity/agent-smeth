@@ -206,7 +206,26 @@ def run(
     intent_l = intent.lower()
 
     # ---------------------------
-    # 1) Price query (Etherscan fallback)
+    # 1) Gas price (RPC)
+    # ---------------------------
+    if "gas price" in intent_l or "gasprice" in intent_l:
+        try:
+            gas_hex = _jsonrpc(rpc_url, "eth_gasPrice", [])
+            data_out["sources"].append("rpc:eth_gasPrice")
+            gas_wei = _hex_to_int(gas_hex)
+            gas_gwei = (gas_wei / 10**9) if gas_wei is not None else None
+            return {
+                "response": "Fetched current gas price via JSON-RPC.",
+                "data": {**data_out, "gas": {"wei": gas_wei, "gwei": gas_gwei}},
+            }
+        except Exception as e:
+            return {
+                "response": f"RPC gas price lookup failed. Provide an HTTP(S) rpc_url. Error: {e}",
+                "data": data_out,
+            }
+
+    # ---------------------------
+    # 2) Price query (Etherscan fallback)
     # ---------------------------
     if "price" in intent_l and (
         "ethereum" in intent_l or re.search(r"\beth\b", intent_l) or "agent-smeth" in intent_l
@@ -248,7 +267,7 @@ def run(
         }
 
     # ---------------------------
-    # 2) Explain transaction (RPC)
+    # 3) Explain transaction (RPC)
     # ---------------------------
     if ("explain" in intent_l or "receipt" in intent_l or "transaction" in intent_l) and tx_hash:
         try:

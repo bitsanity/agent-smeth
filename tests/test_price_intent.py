@@ -26,7 +26,7 @@ class TestCurrentPriceIntent(unittest.TestCase):
         mock_etherscan_get.assert_called_once_with(
             "https://api.etherscan.io/v2/api/",
             "test-key",
-            {"module": "stats", "action": "ethprice"},
+            {"module": "stats", "action": "ethprice", "chainid": "1"},
         )
 
 
