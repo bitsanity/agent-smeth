@@ -206,23 +206,51 @@ def run(
     intent_l = intent.lower()
 
     # ---------------------------
-    # 1) Gas price (RPC)
+    # 1) Gas price (RPC or Etherscan)
     # ---------------------------
     if "gas price" in intent_l or "gasprice" in intent_l:
-        try:
-            gas_hex = _jsonrpc(rpc_url, "eth_gasPrice", [])
-            data_out["sources"].append("rpc:eth_gasPrice")
-            gas_wei = _hex_to_int(gas_hex)
-            gas_gwei = (gas_wei / 10**9) if gas_wei is not None else None
-            return {
-                "response": "Fetched current gas price via JSON-RPC.",
-                "data": {**data_out, "gas": {"wei": gas_wei, "gwei": gas_gwei}},
-            }
-        except Exception as e:
-            return {
-                "response": f"RPC gas price lookup failed. Provide an HTTP(S) rpc_url. Error: {e}",
-                "data": data_out,
-            }
+        # Prefer RPC if a HTTP(S) URL is provided; fall back to Etherscan if configured
+        if rpc_url and not rpc_url.startswith("ws://") and not rpc_url.startswith("wss://"):
+            try:
+                gas_hex = _jsonrpc(rpc_url, "eth_gasPrice", [])
+                data_out["sources"].append("rpc:eth_gasPrice")
+                gas_wei = _hex_to_int(gas_hex)
+                gas_gwei = (gas_wei / 10**9) if gas_wei is not None else None
+                return {
+                    "response": "Fetched current gas price via JSON-RPC.",
+                    "data": {**data_out, "gas": {"wei": gas_wei, "gwei": gas_gwei}},
+                }
+            except Exception as e:
+                data_out["rpc_error"] = str(e)
+
+        if etherscan_api_key:
+            try:
+                params = {"module": "gastracker", "action": "gasoracle"}
+                if "/v2/" in (etherscan_api_url or ""):
+                    chainid_map = {"mainnet": "1", "sepolia": "11155111", "holesky": "17000"}
+                    params["chainid"] = chainid_map.get(chain, "1")
+
+                resp = _etherscan_get(etherscan_api_url, etherscan_api_key, params)
+                data_out["sources"].append("etherscan:gastracker.gasoracle")
+                data_out["gasoracle_raw"] = resp
+                result = resp.get("result", {}) if isinstance(resp, dict) else {}
+                propose = result.get("ProposeGasPrice") if isinstance(result, dict) else None
+                safe = result.get("SafeGasPrice") if isinstance(result, dict) else None
+                fast = result.get("FastGasPrice") if isinstance(result, dict) else None
+                return {
+                    "response": "Fetched current gas price via Etherscan gas oracle.",
+                    "data": {**data_out, "gas": {"gwei": propose, "safe": safe, "fast": fast}},
+                }
+            except Exception as e:
+                data_out["etherscan_error"] = str(e)
+
+        return {
+            "response": (
+                "I couldn’t fetch gas price. Provide an HTTP(S) rpc_url or configure Etherscan "
+                "(etherscan_api_key / ETHERSCAN_API_KEY)."
+            ),
+            "data": data_out,
+        }
 
     # ---------------------------
     # 2) Price query (Etherscan fallback)
