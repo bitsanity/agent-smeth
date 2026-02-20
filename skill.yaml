@@ -15,6 +15,9 @@ tags:
   - agent-to-agent
   - qr-signing
 
+permissions:
+  - camera
+
 entrypoint:
   type: hybrid
   system: prompts/system.md

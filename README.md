@@ -36,9 +36,10 @@ The goal is to simplify blockchain usage through intelligent agent abstraction.
 ## Installation
 
 1. Install OpenClaw from https://openclaw.ai (and requires nodejs)
-2. Connect OpenClaw to an AI
-3. Add agent-smith.zip to OpenClaw
-4. Install SIMPLETH or any ADILOS-compatible app on a smartphone
+2. Configure OpenClaw to connect to an AI engine of your choice
+3. Install zbar-tools
+4. Add agent-smith skill to your OpenClaw environment
+5. Install SIMPLETH or any ADILOS-compatible wallet app on your smartphone
 
 ### Clone the repository
 
@@ -51,6 +52,7 @@ cd agent-smeth
 
 ```bash
 curl -fsSL https://openclaw.ai/install.sh | bash
+sudo apt-get install zbar-tools
 npm install web3js adilosjs
 ```
 
