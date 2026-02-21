@@ -116,6 +116,12 @@ def _normalize_hex_whitespace(value: str) -> str:
     return value
 
 
+def _extract_eth_address(text: str) -> Optional[str]:
+    compact = re.sub(r"\s+", "", text)
+    m = re.search(r"0x[a-fA-F0-9]{40}", compact)
+    return m.group(0) if m else None
+
+
 def _sanitize_output(obj: Any, parent_key: Optional[str] = None) -> Any:
     if isinstance(obj, dict):
         return {k: _sanitize_output(v, k) for k, v in obj.items()}
@@ -459,6 +465,44 @@ def run(
             return {
                 "response": f"RPC tx lookup failed. If your default is ws://127.0.0.1:8546, provide an HTTP(S) rpc_url. Error: {e}",
                 "data": data_out,
+            }
+
+    # ---------------------------
+    # 3) ENS reverse lookup (address -> ENS)
+    # ---------------------------
+    if "ens" in intent_l and ("reverse" in intent_l or "lookup" in intent_l):
+        addr = None
+        for candidate in (from_, to, intent):
+            if candidate and isinstance(candidate, str):
+                found = _extract_eth_address(candidate)
+                if found:
+                    addr = _normalize_hex_whitespace(found)
+                    break
+
+        if not addr:
+            return {
+                "response": "I didn't detect a valid Ethereum address for reverse ENS lookup.",
+                "data": data_out,
+            }
+
+        try:
+            resp = _ens_resolve(addr, ens_api_url)
+            data_out["sources"].append("ens-api:reverse")
+            data_out["ens_reverse"] = {
+                "address": _normalize_hex_whitespace(str(resp.get("address") or addr)),
+                "ens": resp.get("ens") or resp.get("name"),
+                "ens_primary": resp.get("ens_primary") or resp.get("displayName") or resp.get("ens"),
+                "resolver_address": _normalize_hex_whitespace(str(resp.get("resolverAddress") or "")) or None,
+            }
+            return {
+                "response": "Resolved ENS reverse lookup.",
+                "data": _sanitize_output(data_out),
+            }
+        except Exception as e:
+            data_out["ens_reverse_error"] = str(e)
+            return {
+                "response": "I couldn't resolve reverse ENS for that address.",
+                "data": _sanitize_output(data_out),
             }
 
     # ---------------------------
