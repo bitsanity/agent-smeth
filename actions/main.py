@@ -108,9 +108,11 @@ def _extract_qr_message(intent: str) -> Optional[str]:
     return None
 
 
-def _render_qr_ansi_utf8(message: str) -> str:
+def _render_qr_terminal_utf8(message: str) -> str:
+    # Use UTF8 mode (not ansiutf8) to avoid terminal color escape sequences
+    # that can be injected/escaped by chat bridges and break scanning.
     proc = subprocess.run(
-        ["qrencode", "-t", "ansiutf8", message],
+        ["qrencode", "-t", "UTF8", message],
         check=True,
         capture_output=True,
         text=True,
@@ -369,11 +371,11 @@ def run(
             }
 
         try:
-            qr_ansi = _render_qr_ansi_utf8(qr_message)
+            qr_text = _render_qr_terminal_utf8(qr_message)
             data_out["sources"].append("local:qrencode")
             return {
                 "response": "Rendered QR code for terminal display.",
-                "data": {**data_out, "qr": {"message": qr_message, "ansiutf8": qr_ansi}},
+                "data": {**data_out, "qr": {"message": qr_message, "utf8": qr_text, "format": "UTF8"}},
             }
         except Exception as e:
             return {

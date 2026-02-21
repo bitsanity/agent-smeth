@@ -206,8 +206,8 @@ or
 agent-smeth:
 
 1. extracts the message text
-2. runs `qrencode -t ansiutf8 "$MESSAGE"`
-3. returns ANSI UTF-8 terminal QR output
+2. runs `qrencode -t UTF8 "$MESSAGE"`
+3. returns UTF-8 terminal QR output (no ANSI color escapes)
 
 ---
 
