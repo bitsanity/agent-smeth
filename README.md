@@ -35,11 +35,14 @@ The goal is to simplify blockchain usage through intelligent agent abstraction.
 
 ## Installation
 
-1. Install OpenClaw from https://openclaw.ai (and requires nodejs)
+1. Install OpenClaw from https://openclaw.ai (requires Node.js)
 2. Configure OpenClaw to connect to an AI engine of your choice
-3. Install zbar-tools
-4. Add agent-smith skill to your OpenClaw environment
-5. Install SIMPLETH or any ADILOS-compatible wallet app on your smartphone
+3. Install `zbar-tools`
+4. Install `qrencode`
+5. Add the `agent-smeth` skill to your OpenClaw environment
+
+On the human smartphone:
+1. Install SIMPLETH or any ADILOS-compatible wallet app
 
 ### Clone the repository
 
@@ -52,13 +55,29 @@ cd agent-smeth
 
 ```bash
 curl -fsSL https://openclaw.ai/install.sh | bash
-sudo apt-get install zbar-tools
+sudo apt-get install zbar-tools qrencode
 npm install web3js adilosjs
 ```
 
-note: agent-smeth uses adilosjs to generate cryptographic challenges and parse
-      replies to verify the caller's pubkey and to get the caller to sign
-      something
+Note: `agent-smeth` uses `adilosjs` to generate cryptographic challenges and parse
+replies to verify the caller's pubkey and to obtain signatures.
+
+---
+
+## Startup Checks
+
+On startup, `agent-smeth` performs dependency checks before handling intents:
+
+- `zbar-tools` binaries (`zbarimg`/`zbarcam`) must be available
+- `adilosjs` must be resolvable by Node.js (`require.resolve('adilosjs')`)
+
+If either check fails, the action returns a clear startup-check error with details in `data.startup_check`.
+
+### Quick verification
+
+```bash
+python3 -m unittest tests/test_startup_checks.py
+```
 
 ---
 
@@ -276,7 +295,7 @@ agent-smeth can function as:
 
 ## Roadmap
 
-* [ ] Ethereum Name Service (ENS) integration
+* [✅] Ethereum Name Service (ENS) integration
 * [ ] Stealth-Payment integration (agent can send and retrieve stealth payments)
 * [ ] Multi-chain support
 * [ ] ERC-20 / ERC-721 helpers
