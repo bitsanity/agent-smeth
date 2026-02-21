@@ -87,6 +87,37 @@ def _adilosjs_installed() -> bool:
         return False
 
 
+def _extract_qr_message(intent: str) -> Optional[str]:
+    text = intent.strip()
+
+    # e.g. "show me a qr code ... that says Hello World"
+    m = re.search(r"\bthat\s+says\s+(.+)$", text, re.IGNORECASE)
+    if m:
+        return m.group(1).strip().strip('"\'')
+
+    # e.g. "say Hello World with a qr code"
+    m = re.search(r"\bsay\s+(.+?)\s+with\s+(?:a\s+)?qr\s+code\b", text, re.IGNORECASE)
+    if m:
+        return m.group(1).strip().strip('"\'')
+
+    # e.g. "qr code Hello World"
+    m = re.search(r"\bqr\s+code\b\s*(?:for\s+|of\s+)?(.+)$", text, re.IGNORECASE)
+    if m and m.group(1).strip():
+        return m.group(1).strip().strip('"\'')
+
+    return None
+
+
+def _render_qr_ansi_utf8(message: str) -> str:
+    proc = subprocess.run(
+        ["qrencode", "-t", "ansiutf8", message],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return proc.stdout
+
+
 # ---------------------------
 # JSON-RPC (HTTP only)
 # ---------------------------
@@ -325,6 +356,30 @@ def run(
             data_out["payload_error"] = f"payload JSON parse error: {e}"
 
     intent_l = intent.lower()
+
+    # ---------------------------
+    # 0) QR code rendering (terminal ANSI UTF-8)
+    # ---------------------------
+    if "qr code" in intent_l or intent_l.startswith("say "):
+        qr_message = _extract_qr_message(intent)
+        if not qr_message:
+            return {
+                "response": "I can render a QR code at the command line. Tell me the message to encode.",
+                "data": {**data_out, "qr": {"error": "missing_message"}},
+            }
+
+        try:
+            qr_ansi = _render_qr_ansi_utf8(qr_message)
+            data_out["sources"].append("local:qrencode")
+            return {
+                "response": "Rendered QR code for terminal display.",
+                "data": {**data_out, "qr": {"message": qr_message, "ansiutf8": qr_ansi}},
+            }
+        except Exception as e:
+            return {
+                "response": "Failed to render QR code with qrencode.",
+                "data": {**data_out, "qr": {"message": qr_message, "error": str(e)}},
+            }
 
     # ---------------------------
     # 1) Gas price (RPC or Etherscan)

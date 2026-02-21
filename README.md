@@ -194,6 +194,26 @@ agent-smeth:
 ### Example (Human-Agent Interaction)
 
 ```
+"show me a qr code at the command line that says Hello World"
+```
+
+or
+
+```
+"say Hello World with a qr code"
+```
+
+agent-smeth:
+
+1. extracts the message text
+2. runs `qrencode -t ansiutf8 "$MESSAGE"`
+3. returns ANSI UTF-8 terminal QR output
+
+---
+
+### Example (Human-Agent Interaction)
+
+```
 "Verify my Ethereum account"
 ```
 
