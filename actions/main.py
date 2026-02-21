@@ -26,6 +26,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 import urllib.parse
 import urllib.request
 from typing import Any, Dict, Optional
@@ -108,16 +109,25 @@ def _extract_qr_message(intent: str) -> Optional[str]:
     return None
 
 
-def _render_qr_terminal_utf8(message: str) -> str:
-    # Use UTF8 mode (not ansiutf8) to avoid terminal color escape sequences
-    # that can be injected/escaped by chat bridges and break scanning.
-    proc = subprocess.run(
-        ["qrencode", "-t", "UTF8", message],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    return proc.stdout
+def _render_qr_png(message: str) -> str:
+    fd, out_path = tempfile.mkstemp(prefix="agent-smeth-qr-", suffix=".png")
+    os.close(fd)
+
+    try:
+        subprocess.run(
+            ["qrencode", "-o", out_path, message],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return out_path
+    except Exception:
+        # Best-effort cleanup if qrencode fails
+        try:
+            os.unlink(out_path)
+        except Exception:
+            pass
+        raise
 
 
 # ---------------------------
@@ -371,11 +381,19 @@ def run(
             }
 
         try:
-            qr_text = _render_qr_terminal_utf8(qr_message)
+            qr_png_path = _render_qr_png(qr_message)
             data_out["sources"].append("local:qrencode")
             return {
-                "response": "Rendered QR code for terminal display.",
-                "data": {**data_out, "qr": {"message": qr_message, "utf8": qr_text, "format": "UTF8"}},
+                "response": "Rendered QR code image for reliable scanning.",
+                "data": {
+                    **data_out,
+                    "qr": {
+                        "message": qr_message,
+                        "format": "PNG",
+                        "path": qr_png_path,
+                        "note": "Use the PNG file for scanning reliability across terminals and UIs.",
+                    },
+                },
             }
         except Exception as e:
             return {
