@@ -32,6 +32,21 @@ class TestEnsIntent(unittest.TestCase):
         self.assertEqual(result["response"], "I couldn't resolve the ENS name(s).")
         self.assertIn("noone.eth", result["data"]["ens"]["errors"])
 
+    @patch("actions.main._zbar_tools_installed", return_value=True)
+    @patch("actions.main._ens_resolve")
+    def test_find_ens_name_compacts_whitespace_in_address(self, mock_ens_resolve, _mock_zbar_check):
+        mock_ens_resolve.return_value = {
+            "address": "0xdc8D255E709EdF2ed2622B2691E8E D9a71abB59E",
+            "ens": "deliver.eth",
+        }
+
+        result = run(intent="resolve ENS name deliver.eth")
+
+        self.assertEqual(
+            result["data"]["ens"]["resolved"]["deliver.eth"]["address"],
+            "0xdc8D255E709EdF2ed2622B2691E8ED9a71abB59E",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

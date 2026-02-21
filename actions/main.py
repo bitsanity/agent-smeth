@@ -108,6 +108,28 @@ def _pad32(hex_no_0x: str) -> str:
     return hex_no_0x.rjust(64, "0")
 
 
+def _normalize_hex_whitespace(value: str) -> str:
+    # Collapse whitespace inside hex-like values (e.g. split addresses/keys)
+    collapsed = re.sub(r"\s+", "", value)
+    if re.fullmatch(r"(?:0x)?[A-Fa-f0-9]{16,}", collapsed):
+        return collapsed
+    return value
+
+
+def _sanitize_output(obj: Any, parent_key: Optional[str] = None) -> Any:
+    if isinstance(obj, dict):
+        return {k: _sanitize_output(v, k) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize_output(v, parent_key) for v in obj]
+    if isinstance(obj, str):
+        key = (parent_key or "").lower()
+        if any(tag in key for tag in ("address", "key", "pubkey")):
+            return _normalize_hex_whitespace(obj)
+        # Also catch obvious split hex values even when key name is generic.
+        return _normalize_hex_whitespace(obj)
+    return obj
+
+
 # ---------------------------
 # Etherscan (fallback)
 # ---------------------------
@@ -466,7 +488,7 @@ def run(
             try:
                 resp = _ens_resolve(n, ens_api_url)
                 resolved[n] = {
-                    "address": resp.get("address"),
+                    "address": _normalize_hex_whitespace(str(resp.get("address") or "")) or None,
                     "name": resp.get("name") or resp.get("ens") or n,
                     "display_name": resp.get("displayName") or resp.get("ens_primary") or resp.get("ens"),
                     "avatar": resp.get("avatar") or resp.get("avatar_url") or resp.get("avatar_small"),
@@ -480,12 +502,12 @@ def run(
         if resolved:
             return {
                 "response": "Resolved ENS name(s).",
-                "data": data_out,
+                "data": _sanitize_output(data_out),
             }
 
         return {
             "response": "I couldn't resolve the ENS name(s).",
-            "data": data_out,
+            "data": _sanitize_output(data_out),
         }
 
     # ---------------------------
