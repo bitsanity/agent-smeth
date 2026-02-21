@@ -127,6 +127,20 @@ def _etherscan_get(api_url: str, api_key: str, params: Dict[str, str], timeout_s
         return json.loads(raw)
 
 
+def _ens_resolve(ens_name: str, ens_api_url: str, timeout_s: int = 20) -> Dict[str, Any]:
+    # Public ENS resolver API fallback (stdlib-only path)
+    # Expected format: GET <base>/<name> -> {"address": "0x...", ...}
+    base = ens_api_url.rstrip("/")
+    url = f"{base}/{urllib.parse.quote(ens_name)}"
+    req = urllib.request.Request(url, headers={"User-Agent": "agent-smeth/0.2"})
+    with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+        raw = resp.read().decode("utf-8", errors="replace")
+        out = json.loads(raw)
+        if not isinstance(out, dict):
+            raise RuntimeError("ENS API returned non-object payload")
+        return out
+
+
 # ---------------------------
 # Intent routing
 # ---------------------------
@@ -169,6 +183,7 @@ def run(
     rpc_url: Optional[str] = None,
     etherscan_api_url: Optional[str] = None,
     etherscan_api_key: Optional[str] = None,
+    ens_api_url: Optional[str] = None,
     from_: Optional[str] = None,
     to: Optional[str] = None,
     amount: Optional[str] = None,
@@ -180,6 +195,7 @@ def run(
     rpc_url = rpc_url or os.getenv("RPC_URL") or "ws://127.0.0.1:8546"
     etherscan_api_url = etherscan_api_url or os.getenv("ETHERSCAN_API_URL") or "https://etherscan.io"
     etherscan_api_key = etherscan_api_key or os.getenv("ETHERSCAN_API_KEY")
+    ens_api_url = ens_api_url or os.getenv("ENS_API_URL") or "https://api.ensideas.com/ens/resolve"
 
     inputs = {
         "intent": intent,
@@ -187,6 +203,7 @@ def run(
         "rpc_url": rpc_url,
         "etherscan_api_url": etherscan_api_url,
         "etherscan_api_key": etherscan_api_key,
+        "ens_api_url": ens_api_url,
         "from": from_,
         "to": to,
         "amount": amount,
@@ -423,19 +440,52 @@ def run(
             }
 
     # ---------------------------
-    # 3) ENS lookup (placeholder unless ENS contracts configured)
+    # 3) ENS lookup (resolve .eth names via ENS API fallback)
     # ---------------------------
     if ("ens" in intent_l or "find" in intent_l) and (
         from_ and _looks_like_ens(from_) or to and _looks_like_ens(to) or ".eth" in intent_l
     ):
+        names: list[str] = []
+        if from_ and _looks_like_ens(from_):
+            names.append(from_)
+        if to and _looks_like_ens(to):
+            names.append(to)
+
+        if not names:
+            names = re.findall(r"\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.eth\b", intent_l)
+
+        if not names:
+            return {
+                "response": "I didn't detect a valid .eth name to resolve.",
+                "data": data_out,
+            }
+
+        resolved: Dict[str, Any] = {}
+        errors: Dict[str, str] = {}
+        for n in names:
+            try:
+                resp = _ens_resolve(n, ens_api_url)
+                resolved[n] = {
+                    "address": resp.get("address"),
+                    "name": resp.get("name", n),
+                    "display_name": resp.get("displayName"),
+                    "avatar": resp.get("avatar"),
+                }
+            except Exception as e:
+                errors[n] = str(e)
+
+        data_out["sources"].append("ens-api:resolve")
+        data_out["ens"] = {"resolved": resolved, "errors": errors, "api_url": ens_api_url}
+
+        if resolved:
+            return {
+                "response": "Resolved ENS name(s).",
+                "data": data_out,
+            }
+
         return {
-            "response": (
-                "ENS resolution requires calling the ENS registry/resolver contracts via RPC (eth_call) "
-                "and knowing the ENS registry address for the target chain. "
-                "This action is currently configured as a placeholder; provide/implement ENS_REGISTRY_ADDRESS "
-                "and resolver logic (or add a dependency like web3.py) to fully resolve .eth names."
-            ),
-            "data": {**data_out, "ens": {"note": "placeholder", "requested_from": from_, "requested_to": to}},
+            "response": "I couldn't resolve the ENS name(s).",
+            "data": data_out,
         }
 
     # ---------------------------

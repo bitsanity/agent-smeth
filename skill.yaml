@@ -54,6 +54,11 @@ inputs:
     required: false
     description: "Optional Etherscan API key. If omitted, uses env ETHERSCAN_API_KEY."
 
+  - name: ens_api_url
+    type: string
+    required: false
+    description: "Optional ENS resolver API base URL. If omitted, uses env ENS_API_URL or https://api.ensideas.com/ens/resolve."
+
   - name: from
     type: string
     required: false
