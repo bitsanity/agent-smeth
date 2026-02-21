@@ -29,6 +29,7 @@ class TestStartupChecks(unittest.TestCase):
         self.assertIn("Startup check failed: adilosjs npm module is not installed", result["response"])
         self.assertEqual(result["data"]["startup_check"]["adilosjs_installed"], False)
 
+    @patch("actions.main._cleanup_stale_qr_files", return_value=0)
     @patch("actions.main._zbar_tools_installed", return_value=True)
     @patch("actions.main._qrencode_installed", return_value=True)
     @patch("actions.main._adilosjs_installed", return_value=True)
@@ -39,6 +40,7 @@ class TestStartupChecks(unittest.TestCase):
         _mock_adilosjs_check,
         _mock_qrencode_check,
         _mock_zbar_check,
+        mock_cleanup,
     ):
         mock_etherscan_get.return_value = {
             "status": "1",
@@ -54,6 +56,7 @@ class TestStartupChecks(unittest.TestCase):
 
         self.assertEqual(result["response"], "Fetched ETH price via Etherscan (fallback path).")
         self.assertEqual(result["data"]["price"]["price_usd"], "4242.69")
+        mock_cleanup.assert_called_once_with()
 
 
 if __name__ == "__main__":

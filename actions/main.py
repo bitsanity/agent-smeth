@@ -27,6 +27,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 import urllib.parse
 import urllib.request
 from typing import Any, Dict, Optional
@@ -128,6 +129,33 @@ def _render_qr_png(message: str) -> str:
         except Exception:
             pass
         raise
+
+
+def _cleanup_stale_qr_files(max_age_seconds: int = 24 * 60 * 60) -> int:
+    now = int(time.time())
+    removed = 0
+    tmp_dir = tempfile.gettempdir()
+
+    try:
+        for name in os.listdir(tmp_dir):
+            if not (name.startswith("agent-smeth-qr-") and name.endswith(".png")):
+                continue
+            path = os.path.join(tmp_dir, name)
+            try:
+                st = os.stat(path)
+                age = now - int(st.st_mtime)
+                if age > max_age_seconds:
+                    os.unlink(path)
+                    removed += 1
+            except FileNotFoundError:
+                continue
+            except Exception:
+                # Non-fatal: cleanup is best-effort.
+                continue
+    except Exception:
+        return removed
+
+    return removed
 
 
 # ---------------------------
@@ -288,6 +316,9 @@ def run(
     etherscan_api_url = etherscan_api_url or os.getenv("ETHERSCAN_API_URL") or "https://etherscan.io"
     etherscan_api_key = etherscan_api_key or os.getenv("ETHERSCAN_API_KEY")
     ens_api_url = ens_api_url or os.getenv("ENS_API_URL") or "https://api.ensdata.net"
+
+    # Best-effort housekeeping on wake/start of each action invocation.
+    _cleanup_stale_qr_files()
 
     inputs = {
         "intent": intent,

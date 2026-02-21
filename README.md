@@ -73,6 +73,8 @@ On startup, `agent-smeth` performs dependency checks before handling intents:
 
 If either check fails, the action returns a clear startup-check error with details in `data.startup_check`.
 
+On startup, `agent-smeth` also performs best-effort housekeeping by deleting stale QR image files matching `/tmp/agent-smeth-qr-*.png` older than 24 hours.
+
 ### Quick verification
 
 ```bash
