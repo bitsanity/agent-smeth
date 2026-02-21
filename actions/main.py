@@ -25,6 +25,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import urllib.parse
 import urllib.request
 from typing import Any, Dict, Optional
@@ -64,6 +65,22 @@ def _as_json(obj: Any) -> str:
 def _zbar_tools_installed() -> bool:
     # zbar-tools commonly provides zbarimg/zbarcam binaries
     return bool(shutil.which("zbarimg") or shutil.which("zbarcam"))
+
+
+def _adilosjs_installed() -> bool:
+    if not shutil.which("node"):
+        return False
+
+    try:
+        subprocess.run(
+            ["node", "-e", "require.resolve('adilosjs')"],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return True
+    except Exception:
+        return False
 
 
 # ---------------------------
@@ -246,7 +263,16 @@ def run(
                 "Startup check failed: zbar-tools is not installed. "
                 "Install it first (e.g., 'sudo apt-get install zbar-tools')."
             ),
-            "data": {"startup_check": {"zbar_tools_installed": False}},
+            "data": {"startup_check": {"zbar_tools_installed": False, "adilosjs_installed": None}},
+        }
+
+    if not _adilosjs_installed():
+        return {
+            "response": (
+                "Startup check failed: adilosjs npm module is not installed. "
+                "Install it first (e.g., 'npm install adilosjs')."
+            ),
+            "data": {"startup_check": {"zbar_tools_installed": True, "adilosjs_installed": False}},
         }
 
     secret_refusal = _refuse_if_secret_present(inputs)
