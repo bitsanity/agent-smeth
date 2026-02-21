@@ -57,7 +57,7 @@ inputs:
   - name: ens_api_url
     type: string
     required: false
-    description: "Optional ENS resolver API base URL. If omitted, uses env ENS_API_URL or https://api.ensideas.com/ens/resolve."
+    description: "Optional ENS resolver API base URL. If omitted, uses env ENS_API_URL or https://api.ensdata.net."
 
   - name: from
     type: string

@@ -195,7 +195,7 @@ def run(
     rpc_url = rpc_url or os.getenv("RPC_URL") or "ws://127.0.0.1:8546"
     etherscan_api_url = etherscan_api_url or os.getenv("ETHERSCAN_API_URL") or "https://etherscan.io"
     etherscan_api_key = etherscan_api_key or os.getenv("ETHERSCAN_API_KEY")
-    ens_api_url = ens_api_url or os.getenv("ENS_API_URL") or "https://api.ensideas.com/ens/resolve"
+    ens_api_url = ens_api_url or os.getenv("ENS_API_URL") or "https://api.ensdata.net"
 
     inputs = {
         "intent": intent,
@@ -467,9 +467,9 @@ def run(
                 resp = _ens_resolve(n, ens_api_url)
                 resolved[n] = {
                     "address": resp.get("address"),
-                    "name": resp.get("name", n),
-                    "display_name": resp.get("displayName"),
-                    "avatar": resp.get("avatar"),
+                    "name": resp.get("name") or resp.get("ens") or n,
+                    "display_name": resp.get("displayName") or resp.get("ens_primary") or resp.get("ens"),
+                    "avatar": resp.get("avatar") or resp.get("avatar_url") or resp.get("avatar_small"),
                 }
             except Exception as e:
                 errors[n] = str(e)
