@@ -13,17 +13,33 @@ class TestStartupChecks(unittest.TestCase):
         self.assertEqual(result["data"]["startup_check"]["zbar_tools_installed"], False)
 
     @patch("actions.main._zbar_tools_installed", return_value=True)
+    @patch("actions.main._qrencode_installed", return_value=False)
+    def test_startup_fails_when_qrencode_missing(self, _mock_qrencode_check, _mock_zbar_check):
+        result = run(intent="agent-smeth gets current price")
+
+        self.assertIn("Startup check failed: qrencode is not installed", result["response"])
+        self.assertEqual(result["data"]["startup_check"]["qrencode_installed"], False)
+
+    @patch("actions.main._zbar_tools_installed", return_value=True)
+    @patch("actions.main._qrencode_installed", return_value=True)
     @patch("actions.main._adilosjs_installed", return_value=False)
-    def test_startup_fails_when_adilosjs_missing(self, _mock_adilosjs_check, _mock_zbar_check):
+    def test_startup_fails_when_adilosjs_missing(self, _mock_adilosjs_check, _mock_qrencode_check, _mock_zbar_check):
         result = run(intent="agent-smeth gets current price")
 
         self.assertIn("Startup check failed: adilosjs npm module is not installed", result["response"])
         self.assertEqual(result["data"]["startup_check"]["adilosjs_installed"], False)
 
     @patch("actions.main._zbar_tools_installed", return_value=True)
+    @patch("actions.main._qrencode_installed", return_value=True)
     @patch("actions.main._adilosjs_installed", return_value=True)
     @patch("actions.main._etherscan_get")
-    def test_startup_passes_when_checks_present(self, mock_etherscan_get, _mock_adilosjs_check, _mock_zbar_check):
+    def test_startup_passes_when_checks_present(
+        self,
+        mock_etherscan_get,
+        _mock_adilosjs_check,
+        _mock_qrencode_check,
+        _mock_zbar_check,
+    ):
         mock_etherscan_get.return_value = {
             "status": "1",
             "message": "OK",

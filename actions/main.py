@@ -67,6 +67,10 @@ def _zbar_tools_installed() -> bool:
     return bool(shutil.which("zbarimg") or shutil.which("zbarcam"))
 
 
+def _qrencode_installed() -> bool:
+    return bool(shutil.which("qrencode"))
+
+
 def _adilosjs_installed() -> bool:
     if not shutil.which("node"):
         return False
@@ -263,7 +267,28 @@ def run(
                 "Startup check failed: zbar-tools is not installed. "
                 "Install it first (e.g., 'sudo apt-get install zbar-tools')."
             ),
-            "data": {"startup_check": {"zbar_tools_installed": False, "adilosjs_installed": None}},
+            "data": {
+                "startup_check": {
+                    "zbar_tools_installed": False,
+                    "qrencode_installed": None,
+                    "adilosjs_installed": None,
+                }
+            },
+        }
+
+    if not _qrencode_installed():
+        return {
+            "response": (
+                "Startup check failed: qrencode is not installed. "
+                "Install it first (e.g., 'sudo apt-get install qrencode')."
+            ),
+            "data": {
+                "startup_check": {
+                    "zbar_tools_installed": True,
+                    "qrencode_installed": False,
+                    "adilosjs_installed": None,
+                }
+            },
         }
 
     if not _adilosjs_installed():
@@ -272,7 +297,13 @@ def run(
                 "Startup check failed: adilosjs npm module is not installed. "
                 "Install it first (e.g., 'npm install adilosjs')."
             ),
-            "data": {"startup_check": {"zbar_tools_installed": True, "adilosjs_installed": False}},
+            "data": {
+                "startup_check": {
+                    "zbar_tools_installed": True,
+                    "qrencode_installed": True,
+                    "adilosjs_installed": False,
+                }
+            },
         }
 
     secret_refusal = _refuse_if_secret_present(inputs)

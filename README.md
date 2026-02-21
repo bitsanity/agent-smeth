@@ -59,8 +59,7 @@ sudo apt-get install zbar-tools qrencode
 npm install web3js adilosjs
 ```
 
-Note: `agent-smeth` uses `adilosjs` to generate cryptographic challenges and parse
-replies to verify the caller's pubkey and to obtain signatures.
+Note: `agent-smeth` uses `adilosjs` to generate cryptographic challenges and parse replies to verify the caller's pubkey and to obtain signatures.
 
 ---
 
@@ -69,6 +68,7 @@ replies to verify the caller's pubkey and to obtain signatures.
 On startup, `agent-smeth` performs dependency checks before handling intents:
 
 - `zbar-tools` binaries (`zbarimg`/`zbarcam`) must be available
+- `qrencode` binary must be available
 - `adilosjs` must be resolvable by Node.js (`require.resolve('adilosjs')`)
 
 If either check fails, the action returns a clear startup-check error with details in `data.startup_check`.
