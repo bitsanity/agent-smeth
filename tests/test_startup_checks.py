@@ -29,14 +29,32 @@ class TestStartupChecks(unittest.TestCase):
         self.assertIn("Startup check failed: adilosjs npm module is not installed", result["response"])
         self.assertEqual(result["data"]["startup_check"]["adilosjs_installed"], False)
 
+    @patch("actions.main._zbar_tools_installed", return_value=True)
+    @patch("actions.main._qrencode_installed", return_value=True)
+    @patch("actions.main._adilosjs_installed", return_value=True)
+    @patch("actions.main._ecjsonrpc_installed", return_value=False)
+    def test_startup_fails_when_ecjsonrpc_missing(
+        self,
+        _mock_ecjsonrpc_check,
+        _mock_adilosjs_check,
+        _mock_qrencode_check,
+        _mock_zbar_check,
+    ):
+        result = run(intent="agent-smeth gets current price")
+
+        self.assertIn("Startup check failed: ecjsonrpc npm module is not installed", result["response"])
+        self.assertEqual(result["data"]["startup_check"]["ecjsonrpc_installed"], False)
+
     @patch("actions.main._cleanup_stale_qr_files", return_value=0)
     @patch("actions.main._zbar_tools_installed", return_value=True)
     @patch("actions.main._qrencode_installed", return_value=True)
     @patch("actions.main._adilosjs_installed", return_value=True)
+    @patch("actions.main._ecjsonrpc_installed", return_value=True)
     @patch("actions.main._etherscan_get")
     def test_startup_passes_when_checks_present(
         self,
         mock_etherscan_get,
+        _mock_ecjsonrpc_check,
         _mock_adilosjs_check,
         _mock_qrencode_check,
         _mock_zbar_check,

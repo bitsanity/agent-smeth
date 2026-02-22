@@ -89,6 +89,22 @@ def _adilosjs_installed() -> bool:
         return False
 
 
+def _ecjsonrpc_installed() -> bool:
+    if not shutil.which("node"):
+        return False
+
+    try:
+        subprocess.run(
+            ["node", "-e", "require.resolve('ecjsonrpc')"],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return True
+    except Exception:
+        return False
+
+
 def _extract_qr_message(intent: str) -> Optional[str]:
     text = intent.strip()
 
@@ -346,6 +362,7 @@ def run(
                     "zbar_tools_installed": False,
                     "qrencode_installed": None,
                     "adilosjs_installed": None,
+                    "ecjsonrpc_installed": None,
                 }
             },
         }
@@ -361,6 +378,7 @@ def run(
                     "zbar_tools_installed": True,
                     "qrencode_installed": False,
                     "adilosjs_installed": None,
+                    "ecjsonrpc_installed": None,
                 }
             },
         }
@@ -376,6 +394,23 @@ def run(
                     "zbar_tools_installed": True,
                     "qrencode_installed": True,
                     "adilosjs_installed": False,
+                    "ecjsonrpc_installed": None,
+                }
+            },
+        }
+
+    if not _ecjsonrpc_installed():
+        return {
+            "response": (
+                "Startup check failed: ecjsonrpc npm module is not installed. "
+                "Install it first (e.g., 'npm install ecjsonrpc')."
+            ),
+            "data": {
+                "startup_check": {
+                    "zbar_tools_installed": True,
+                    "qrencode_installed": True,
+                    "adilosjs_installed": True,
+                    "ecjsonrpc_installed": False,
                 }
             },
         }
