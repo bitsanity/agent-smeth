@@ -469,6 +469,54 @@ def run(
     intent_l = intent.lower()
 
     # ---------------------------
+    # 0) Obtain connecting-agent EC public key via ADILOS over digital channel
+    # ---------------------------
+    wants_agent_pubkey = (
+        any(k in intent_l for k in ("agent", "connectingagent", "connecting agent"))
+        and (("pubkey" in intent_l) or ("public key" in intent_l))
+        and any(k in intent_l for k in ("obtain", "get", "adilos", "socket", "websocket", "connection", "channel"))
+    )
+
+    if wants_agent_pubkey:
+        try:
+            generated = _adilos_make_challenge()
+            challenge = generated.get("challenge_base64")
+            sessionkey_hex = generated.get("sessionkey_hex")
+            if not challenge or not sessionkey_hex:
+                raise RuntimeError("ADILOS challenge generation returned empty values")
+
+            data_out["sources"].append("local:adilosjs")
+            return {
+                "response": "Generated an ADILOS challenge for connecting-agent pubkey exchange.",
+                "data": {
+                    **data_out,
+                    "adilos": {
+                        "intent": "obtain-agent-pubkey",
+                        "transport": "socket|websocket|digital-channel",
+                        "sessionkey_hex": sessionkey_hex,
+                        "challenge_base64": challenge,
+                        "next_steps": [
+                            "Send challenge_base64 to the connecting agent over the active connection.",
+                            "Receive ADILOS response payload from the connecting agent.",
+                            "Validate with adilos.validateResponse(response, challenge) to derive connecting-agent pubkey.",
+                            "Retain sessionkey/challenge/pubkey only until connection closes.",
+                        ],
+                        "validation_node_snippet": "const adilos=require('adilosjs'); const pubkeybytes=adilos.validateResponse(response, challenge); console.log(adilos.toHexString(pubkeybytes));",
+                        "safety": [
+                            "Never reuse sessionkey across sessions or connections.",
+                            "Never retain sessionkey/challenge across restarts.",
+                            "Retain session material only for connection lifetime.",
+                        ],
+                    },
+                },
+            }
+        except Exception as e:
+            return {
+                "response": "Failed to prepare ADILOS connecting-agent pubkey flow.",
+                "data": {**data_out, "adilos_error": str(e)},
+            }
+
+    # ---------------------------
     # 0) Obtain human EC public key via ADILOS QR challenge/response
     # ---------------------------
     wants_human_pubkey = (

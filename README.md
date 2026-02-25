@@ -256,6 +256,26 @@ Safety:
 
 ---
 
+### Example (Agent-Agent Interaction)
+
+```
+"obtain connecting agent public key over websocket using ADILOS"
+```
+
+agent-smeth:
+
+1. generates a fresh ADILOS `sessionkey` and challenge
+2. sends challenge over socket/websocket/digital channel
+3. receives connecting-agent ADILOS response
+4. validates response with `adilos.validateResponse(response, challenge)` to derive connecting-agent pubkey
+5. retains session/challenge/pubkey only until connection closes
+
+Safety:
+- never reuse session keys across sessions/connections
+- never retain session/challenge across restarts
+
+---
+
 ### Example (Human-Agent Interaction)
 
 ```
