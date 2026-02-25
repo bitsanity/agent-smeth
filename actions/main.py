@@ -309,6 +309,39 @@ def _normalize_amount(amount: str) -> Dict[str, Any]:
     return {"raw": amount, "note": "Could not parse amount into wei. Provide like '0.01 ETH' or '1337 finney'."}
 
 
+def _adilos_make_challenge() -> Dict[str, str]:
+    """Generate a fresh ADILOS session key + challenge via Node/adilosjs."""
+    node_script = r"""
+const crypto = require('node:crypto')
+const adilos = require('adilosjs')
+
+const salt = crypto.createHash('sha256')
+  .update(Date.now().toString())
+  .digest()
+
+const randval = crypto.randomBytes(32)
+const combined = Buffer.concat([randval, salt])
+const sessionkey = crypto.createHash('sha256').update(combined).digest()
+const challenge = adilos.makeChallenge(sessionkey)
+
+process.stdout.write(JSON.stringify({
+  sessionkey_hex: Buffer.from(sessionkey).toString('hex'),
+  challenge_base64: challenge
+}))
+"""
+    proc = subprocess.run(
+        ["node", "-e", node_script],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    out = json.loads(proc.stdout)
+    return {
+        "sessionkey_hex": str(out.get("sessionkey_hex") or ""),
+        "challenge_base64": str(out.get("challenge_base64") or ""),
+    }
+
+
 # ---------------------------
 # Main action entrypoint
 # ---------------------------
@@ -436,7 +469,55 @@ def run(
     intent_l = intent.lower()
 
     # ---------------------------
-    # 0) QR code rendering (terminal ANSI UTF-8)
+    # 0) Obtain human EC public key via ADILOS QR challenge/response
+    # ---------------------------
+    wants_human_pubkey = (
+        ("human" in intent_l)
+        and (("pubkey" in intent_l) or ("public key" in intent_l))
+        and any(k in intent_l for k in ("obtain", "get", "adilos", "qr", "challenge", "verify"))
+    )
+
+    if wants_human_pubkey:
+        try:
+            generated = _adilos_make_challenge()
+            challenge = generated.get("challenge_base64")
+            sessionkey_hex = generated.get("sessionkey_hex")
+            if not challenge or not sessionkey_hex:
+                raise RuntimeError("ADILOS challenge generation returned empty values")
+
+            qr_png_path = _render_qr_png(challenge)
+            data_out["sources"].extend(["local:adilosjs", "local:qrencode"])
+
+            return {
+                "response": "Generated an ADILOS challenge QR to obtain the human EC public key.",
+                "data": {
+                    **data_out,
+                    "adilos": {
+                        "intent": "obtain-human-pubkey",
+                        "sessionkey_hex": sessionkey_hex,
+                        "challenge_base64": challenge,
+                        "challenge_qr_png_path": qr_png_path,
+                        "next_steps": [
+                            "Display the PNG to the human and have them scan it with an ADILOS-compatible app.",
+                            "Scan their response QR using: zbarcam --raw --oneshot",
+                            "Validate response with adilos.validateResponse(response, challenge) to derive HUMAN_PUB_KEY.",
+                        ],
+                        "validation_node_snippet": "const adilos=require('adilosjs'); const pubkeybytes=adilos.validateResponse(response, challenge); console.log(adilos.toHexString(pubkeybytes));",
+                        "safety": [
+                            "Never reuse sessionkey across sessions.",
+                            "Keep sessionkey/challenge in memory only; do not persist to disk.",
+                        ],
+                    },
+                },
+            }
+        except Exception as e:
+            return {
+                "response": "Failed to prepare ADILOS human-pubkey challenge flow.",
+                "data": {**data_out, "adilos_error": str(e)},
+            }
+
+    # ---------------------------
+    # 1) QR code rendering (terminal ANSI UTF-8)
     # ---------------------------
     if "qr code" in intent_l or intent_l.startswith("say "):
         qr_message = _extract_qr_message(intent)

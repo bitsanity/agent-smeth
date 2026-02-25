@@ -70,6 +70,7 @@ On startup, `agent-smeth` performs dependency checks before handling intents:
 - `zbar-tools` binaries (`zbarimg`/`zbarcam`) must be available
 - `qrencode` binary must be available
 - `adilosjs` must be resolvable by Node.js (`require.resolve('adilosjs')`)
+- `ecjsonrpc` must be resolvable by Node.js (`require.resolve('ecjsonrpc')`)
 
 If either check fails, the action returns a clear startup-check error with details in `data.startup_check`.
 
@@ -196,26 +197,6 @@ agent-smeth:
 ### Example (Human-Agent Interaction)
 
 ```
-"show me a qr code at the command line that says Hello World"
-```
-
-or
-
-```
-"say Hello World with a qr code"
-```
-
-agent-smeth:
-
-1. extracts the message text
-2. runs `qrencode -o /tmp/agent-smeth-qr-*.png "$MESSAGE"`
-3. returns a PNG path for reliable scanning across terminals/UIs
-
----
-
-### Example (Human-Agent Interaction)
-
-```
 "Verify my Ethereum account"
 ```
 
@@ -259,6 +240,25 @@ result: agent-smeth knows the human's Verified Account and ENS-name for use in f
 ### Example (Human-Agent Interaction)
 
 ```
+"obtain human pubkey with ADILOS QR challenge"
+```
+
+agent-smeth:
+
+1. generates a fresh ADILOS `sessionkey` and challenge
+2. renders challenge QR as a PNG for reliable scanning
+3. instructs operator to scan the response with `zbarcam --raw --oneshot`
+4. returns a validation snippet using `adilos.validateResponse(response, challenge)`
+
+Safety:
+- never reuse session keys
+- keep session key/challenge in memory only (no disk persistence)
+
+---
+
+### Example (Human-Agent Interaction)
+
+```
 "send 0.01 ETH from Verified Account to 0xRecipientAddress"
 ```
 
@@ -281,7 +281,7 @@ Common configuration options may include:
 * `RPC_URL` – Recommended, Local Ethereum node, default ```ws://127.0.0.1:8546```
 * `ETHERSCAN_API_URL` - Etherscan API URL default ```https://api.etherscan.io/v2/api/```
 * `ETHERSCAN_API_KEY` - Required to use the Etherscan API
-* `HUMAN_PUB_KEY` - Optional Human's Ethereum public key to avoid repeating the Verification exchange
+* `HUMAN_PUB_KEY` - Optional Human's Elliptic Curve secp256k1 public key
 * `PRIVATE_KEY` – Optional Agent wallet private key (use environment variables)
 * `NETWORK` – mainnet, sepolia, etc.
 * `GAS_STRATEGY` – automatic or manual gas settings
