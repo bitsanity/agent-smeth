@@ -105,6 +105,38 @@ def _ecjsonrpc_installed() -> bool:
         return False
 
 
+def _secp256k1_installed() -> bool:
+    if not shutil.which("node"):
+        return False
+
+    try:
+        subprocess.run(
+            ["node", "-e", "require.resolve('secp256k1')"],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return True
+    except Exception:
+        return False
+
+
+def _ethers_js_installed() -> bool:
+    if not shutil.which("node"):
+        return False
+
+    try:
+        subprocess.run(
+            ["node", "-e", "require.resolve('ethers')"],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return True
+    except Exception:
+        return False
+
+
 def _extract_qr_message(intent: str) -> Optional[str]:
     text = intent.strip()
 
@@ -342,6 +374,53 @@ process.stdout.write(JSON.stringify({
     }
 
 
+def _extract_pubkey_hex(intent: str, payload_obj: Optional[dict]) -> Optional[str]:
+    if payload_obj and isinstance(payload_obj, dict):
+        for k in ("pubkey", "pubkeyhex", "public_key", "publicKey"):
+            v = payload_obj.get(k)
+            if isinstance(v, str) and v.strip():
+                return v.strip().removeprefix("0x")
+
+    m = re.search(r"\b0x([A-Fa-f0-9]{66}|[A-Fa-f0-9]{130})\b", intent)
+    if m:
+        return m.group(1)
+
+    m = re.search(r"\b([A-Fa-f0-9]{66}|[A-Fa-f0-9]{130})\b", intent)
+    if m:
+        return m.group(1)
+
+    return None
+
+
+def _pubkey_to_eth_address(pubkey_hex: str) -> Dict[str, str]:
+    node_script = r"""
+const secp256k1 = require('secp256k1')
+const ethers = require('ethers')
+
+const input = (process.argv[1] || '').replace(/^0x/i, '')
+const pubkeybytes = Buffer.from(input, 'hex')
+const uncomppubkey = secp256k1.publicKeyConvert(pubkeybytes, false)
+const uncomppubkeyhex = '0x' + Buffer.from(uncomppubkey).slice(1).toString('hex')
+const ethaddress = '0x' + ethers.keccak256(uncomppubkeyhex).slice(26)
+
+process.stdout.write(JSON.stringify({
+  pubkey_uncompressed_hex: uncomppubkeyhex,
+  eth_address: ethaddress
+}))
+"""
+    proc = subprocess.run(
+        ["node", "-e", node_script, pubkey_hex],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    out = json.loads(proc.stdout)
+    return {
+        "pubkey_uncompressed_hex": str(out.get("pubkey_uncompressed_hex") or ""),
+        "eth_address": str(out.get("eth_address") or ""),
+    }
+
+
 # ---------------------------
 # Main action entrypoint
 # ---------------------------
@@ -467,6 +546,58 @@ def run(
             data_out["payload_error"] = f"payload JSON parse error: {e}"
 
     intent_l = intent.lower()
+
+    # ---------------------------
+    # 0) Convert EC public key to Ethereum address
+    # ---------------------------
+    wants_pubkey_to_address = (
+        (("convert" in intent_l) or ("derive" in intent_l) or ("to ethereum address" in intent_l))
+        and (("pubkey" in intent_l) or ("public key" in intent_l))
+        and ("address" in intent_l)
+    )
+
+    if wants_pubkey_to_address:
+        pubkey_hex = _extract_pubkey_hex(intent, payload_obj)
+        if not pubkey_hex:
+            return {
+                "response": "Provide a secp256k1 public key in hex (compressed or uncompressed) to convert.",
+                "data": {**data_out, "convert_pubkey": {"error": "missing_pubkey_hex"}},
+            }
+
+        if not _secp256k1_installed() or not _ethers_js_installed():
+            return {
+                "response": (
+                    "Pubkey conversion requires Node modules secp256k1 and ethers. "
+                    "Install with: npm install secp256k1 ethers"
+                ),
+                "data": {
+                    **data_out,
+                    "convert_pubkey": {
+                        "secp256k1_installed": _secp256k1_installed(),
+                        "ethers_installed": _ethers_js_installed(),
+                    },
+                },
+            }
+
+        try:
+            converted = _pubkey_to_eth_address(pubkey_hex)
+            return {
+                "response": "Converted EC public key to Ethereum address.",
+                "data": {
+                    **data_out,
+                    "sources": [*data_out.get("sources", []), "local:secp256k1", "local:ethers"],
+                    "convert_pubkey": {
+                        "input_pubkey_hex": pubkey_hex,
+                        "pubkey_uncompressed_hex": converted.get("pubkey_uncompressed_hex"),
+                        "eth_address": converted.get("eth_address"),
+                    },
+                },
+            }
+        except Exception as e:
+            return {
+                "response": "Failed to convert EC public key to Ethereum address.",
+                "data": {**data_out, "convert_pubkey": {"input_pubkey_hex": pubkey_hex, "error": str(e)}},
+            }
 
     # ---------------------------
     # 0) Obtain connecting-agent EC public key via ADILOS over digital channel

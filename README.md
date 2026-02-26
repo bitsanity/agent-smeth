@@ -71,6 +71,7 @@ On startup, `agent-smeth` performs dependency checks before handling intents:
 - `qrencode` binary must be available
 - `adilosjs` must be resolvable by Node.js (`require.resolve('adilosjs')`)
 - `ecjsonrpc` must be resolvable by Node.js (`require.resolve('ecjsonrpc')`)
+- `secp256k1` and `ethers` are required for pubkey→Ethereum-address conversion intents
 
 If either check fails, the action returns a clear startup-check error with details in `data.startup_check`.
 
@@ -273,6 +274,20 @@ agent-smeth:
 Safety:
 - never reuse session keys across sessions/connections
 - never retain session/challenge across restarts
+
+---
+
+### Example (Human-Agent Interaction)
+
+```
+"convert pubkey 03... to ethereum address"
+```
+
+agent-smeth:
+
+1. accepts a compressed/uncompressed secp256k1 public key in hex
+2. converts to uncompressed form
+3. computes keccak hash and returns Ethereum address
 
 ---
 
