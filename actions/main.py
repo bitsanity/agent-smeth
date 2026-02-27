@@ -206,6 +206,29 @@ def _cleanup_stale_qr_files(max_age_seconds: int = 24 * 60 * 60) -> int:
     return removed
 
 
+def _zbarimg_decode_png(png_path: str) -> Dict[str, str]:
+    """Decode a QR from a PNG using zbarimg -d <png_path>."""
+    proc = subprocess.run(
+        ["zbarimg", "-d", png_path],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    stdout = (proc.stdout or "").strip()
+
+    # Expected line format: "QR-Code:<payload>"
+    decoded_payload = ""
+    for line in stdout.splitlines():
+        if line.startswith("QR-Code:"):
+            decoded_payload = line.split("QR-Code:", 1)[1].strip()
+            break
+
+    return {
+        "zbarimg_stdout": stdout,
+        "decoded_payload": decoded_payload,
+    }
+
+
 # ---------------------------
 # JSON-RPC (HTTP only)
 # ---------------------------
@@ -665,10 +688,11 @@ def run(
                 raise RuntimeError("ADILOS challenge generation returned empty values")
 
             qr_png_path = _render_qr_png(challenge)
-            data_out["sources"].extend(["local:adilosjs", "local:qrencode"])
+            zbar_decoded = _zbarimg_decode_png(qr_png_path)
+            data_out["sources"].extend(["local:adilosjs", "local:qrencode", "local:zbarimg"])
 
             return {
-                "response": "Generated an ADILOS challenge QR to obtain the human EC public key.",
+                "response": "Generated an ADILOS challenge QR to obtain the human EC public key and decoded it with zbarimg -d.",
                 "data": {
                     **data_out,
                     "adilos": {
@@ -676,6 +700,7 @@ def run(
                         "sessionkey_hex": sessionkey_hex,
                         "challenge_base64": challenge,
                         "challenge_qr_png_path": qr_png_path,
+                        "challenge_qr_decoded_via_zbarimg": zbar_decoded,
                         "next_steps": [
                             "Display the PNG to the human and have them scan it with an ADILOS-compatible app.",
                             "Scan their response QR using: zbarcam --raw --oneshot",
@@ -708,15 +733,17 @@ def run(
 
         try:
             qr_png_path = _render_qr_png(qr_message)
-            data_out["sources"].append("local:qrencode")
+            zbar_decoded = _zbarimg_decode_png(qr_png_path)
+            data_out["sources"].extend(["local:qrencode", "local:zbarimg"])
             return {
-                "response": "Rendered QR code image for reliable scanning.",
+                "response": "Rendered QR code image for reliable scanning and decoded it with zbarimg -d.",
                 "data": {
                     **data_out,
                     "qr": {
                         "message": qr_message,
                         "format": "PNG",
                         "path": qr_png_path,
+                        "decoded_via_zbarimg": zbar_decoded,
                         "note": "Use the PNG file for scanning reliability across terminals and UIs.",
                     },
                 },
