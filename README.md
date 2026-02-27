@@ -352,13 +352,16 @@ agent-smeth can function as:
 
 ## Roadmap
 
+* [✅] ADILOS QR exchange with human
 * [✅] Ethereum Name Service (ENS) integration
-* [ ] Stealth-Payment integration (agent can send and retrieve stealth payments)
-* [ ] Multi-chain support
+* [ ] ETH payment helpers
 * [ ] ERC-20 / ERC-721 helpers
+* [ ] Smart contract call support
+* [ ] Stealth-Payment integration
+* [ ] Agent-to-agent trust model
+* [ ] Multi-chain support
 * [ ] Smart contract deployment support
 * [ ] Natural language transaction validation
-* [ ] Agent-to-agent trust model
 
 ---
 
